@@ -1,0 +1,26 @@
+# Build output
+build/
+
+# Zephyr modules (fetched by west)
+zephyr/
+modules/
+bootloader/
+tools/
+
+# IDE
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OMC
+.omc/

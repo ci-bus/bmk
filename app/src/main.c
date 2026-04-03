@@ -1,0 +1,15 @@
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+int main(void)
+{
+	LOG_INF("Keyboard firmware started");
+
+	while (1) {
+		k_sleep(K_MSEC(1000));
+	}
+
+	return 0;
+}

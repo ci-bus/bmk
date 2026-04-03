@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "West Build (nRF52840)",
+      "type": "shell",
+      "command": "west build -p auto -b nrf52840dk/nrf52840 app/",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "West Build (nRF52833)",
+      "type": "shell",
+      "command": "west build -p auto -b nrf52833dk/nrf52833 app/",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "West Build - Clean",
+      "type": "shell",
+      "command": "rm -rf build && west build -b nrf52840dk/nrf52840 app/",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "West Flash",
+      "type": "shell",
+      "command": "west flash",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

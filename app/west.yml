@@ -1,0 +1,19 @@
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v3.6.0
+      import:
+        name-allowlist:
+          - cmsis
+          - hal_nordic
+          - mbedtls
+          - mcuboot
+          - tinycrypt
+
+  self:
+    path: app
