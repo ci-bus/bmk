@@ -9,24 +9,12 @@ manifest:
       revision: v3.6.0
       clone-depth: 1
       import:
-        name-blocklist:
-          - ci-tools
-          - hal_altera
-          - hal_cypress
-          - hal_infineon
-          - hal_microchip
-          - hal_nxp
-          - hal_openisa
-          - hal_xtensa
-          - hal_st
-          - hal_ti
-          - loramac-node
-          - mcuboot
-          - mcumgr
-          - net-tools
-          - openthread
-          - edtt
-          - trusted-firmware-m
+        name-allowlist:
+          - cmsis
+          - hal_nordic
+          - mbedtls
+          - tinycrypt
+          - segger
 
   self:
     path: app

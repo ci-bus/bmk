@@ -45,10 +45,10 @@ Inside the container:
 
 ```bash
 # nRF52840
-west build -p auto -b nrf52840dk/nrf52840 app/
+west build -p auto -b nrf52840dk_nrf52840 app/
 
 # nRF52833
-west build -p auto -b nrf52833dk/nrf52833 app/
+west build -p auto -b nrf52833dk_nrf52833 app/
 ```
 
 Or use VS Code tasks (`Ctrl+Shift+B`):
@@ -86,8 +86,8 @@ bmk/
 
 | Board | Build target |
 |-------|-------------|
-| nRF52840 DK | `nrf52840dk/nrf52840` |
-| nRF52833 DK | `nrf52833dk/nrf52833` |
+| nRF52840 DK | `nrf52840dk_nrf52840` |
+| nRF52833 DK | `nrf52833dk_nrf52833` |
 
 ## Docker Volumes
 

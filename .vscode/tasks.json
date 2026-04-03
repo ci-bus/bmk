@@ -4,7 +4,7 @@
     {
       "label": "West Build (nRF52840)",
       "type": "shell",
-      "command": "west build -p auto -b nrf52840dk/nrf52840 app/",
+      "command": "west build -p auto -b nrf52840dk_nrf52840 app/",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -14,14 +14,14 @@
     {
       "label": "West Build (nRF52833)",
       "type": "shell",
-      "command": "west build -p auto -b nrf52833dk/nrf52833 app/",
+      "command": "west build -p auto -b nrf52833dk_nrf52833 app/",
       "group": "build",
       "problemMatcher": ["$gcc"]
     },
     {
       "label": "West Build - Clean",
       "type": "shell",
-      "command": "rm -rf build && west build -b nrf52840dk/nrf52840 app/",
+      "command": "rm -rf build && west build -b nrf52840dk_nrf52840 app/",
       "group": "build",
       "problemMatcher": ["$gcc"]
     },
