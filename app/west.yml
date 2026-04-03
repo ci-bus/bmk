@@ -7,13 +7,26 @@ manifest:
     - name: zephyr
       remote: zephyrproject-rtos
       revision: v3.6.0
+      clone-depth: 1
       import:
-        name-allowlist:
-          - cmsis
-          - hal_nordic
-          - mbedtls
+        name-blocklist:
+          - ci-tools
+          - hal_altera
+          - hal_cypress
+          - hal_infineon
+          - hal_microchip
+          - hal_nxp
+          - hal_openisa
+          - hal_xtensa
+          - hal_st
+          - hal_ti
+          - loramac-node
           - mcuboot
-          - tinycrypt
+          - mcumgr
+          - net-tools
+          - openthread
+          - edtt
+          - trusted-firmware-m
 
   self:
     path: app

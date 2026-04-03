@@ -1,37 +1,29 @@
 {
-  "name": "Zephyr nRF Firmware Dev",
-  "build": {
-    "dockerfile": "../Dockerfile"
+  "name": "BMK Firmware Dev",
+  "dockerFile": "Dockerfile",
+  "runArgs": ["--security-opt", "label=disable"],
+  "containerEnv": {
+    "WORKSPACE_DIR": "${containerWorkspaceFolder}"
   },
+  "mounts": [
+    "type=volume,source=bmk-root-user,target=/root",
+    "type=volume,source=bmk-zephyr,target=${containerWorkspaceFolder}/zephyr",
+    "type=volume,source=bmk-modules,target=${containerWorkspaceFolder}/modules",
+    "type=volume,source=bmk-tools,target=${containerWorkspaceFolder}/tools",
+    "type=volume,source=bmk-bootloader,target=${containerWorkspaceFolder}/bootloader"
+  ],
   "customizations": {
     "vscode": {
-      "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash",
-        "cmake.configureOnOpen": false,
-        "C_Cpp.default.compilerPath": "/opt/toolchains/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
-        "C_Cpp.default.intelliSenseMode": "linux-gcc-arm",
-        "C_Cpp.default.includePath": [
-          "${workspaceFolder}/app/src",
-          "${workspaceFolder}/zephyr/include",
-          "${workspaceFolder}/modules/**"
-        ]
-      },
       "extensions": [
         "ms-vscode.cpptools",
-        "ms-vscode.cmake-tools",
         "twxs.cmake",
         "marus25.cortex-debug",
-        "ms-python.python",
-        "nordic-semiconductor.nrf-devicetree",
         "trond-snekvik.kconfig-lang"
-      ]
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
     }
   },
-  "workspaceFolder": "/workspace",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-  "postCreateCommand": "west init -l app/ && west update",
-  "remoteUser": "user",
-  "containerEnv": {
-    "ZEPHYR_BASE": "/workspace/zephyr"
-  }
+  "forwardPorts": [3000]
 }
