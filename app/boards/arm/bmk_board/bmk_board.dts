@@ -1,0 +1,72 @@
+/*
+ * Copyright (c) 2025 Miguelio
+ * SPDX-License-Identifier: MIT
+ *
+ * Board: E73-2G4M08S1C (nRF52840)
+ * - No external 32.768kHz crystal (uses internal RC)
+ * - Powered via VDDH from USB (5V)
+ */
+
+/dts-v1/;
+#include <nordic/nrf52840_qiaa.dtsi>
+
+/ {
+	model = "bmk_board";
+	compatible = "bmk_board";
+
+	chosen {
+		zephyr,code-partition = &code_partition;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+	};
+};
+
+&adc {
+	status = "okay";
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&uart0 {
+	status = "disabled";
+};
+
+zephyr_udc0: &usbd {
+	status = "okay";
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		sd_partition: partition@0 {
+			reg = <0x00000000 0x00001000>;
+		};
+
+		code_partition: partition@1000 {
+			reg = <0x00001000 0x000d3000>;
+		};
+
+		storage_partition: partition@d4000 {
+			reg = <0x000d4000 0x00020000>;
+		};
+
+		boot_partition: partition@f4000 {
+			reg = <0x000f4000 0x0000c000>;
+		};
+	};
+};

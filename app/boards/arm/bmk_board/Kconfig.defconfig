@@ -1,0 +1,9 @@
+# Copyright (c) 2025 Miguelio
+# SPDX-License-Identifier: MIT
+
+if BOARD_BMK_BOARD
+
+config BT_CTLR
+    default BT
+
+endif # BOARD_BMK_BOARD
