@@ -1,6 +1,23 @@
 # BMK - BLE Mechanical Keyboard Firmware
 
-Custom BLE keyboard firmware built with [Zephyr RTOS](https://zephyrproject.org/) for nRF52840 and nRF52833.
+Custom USB + BLE HID keyboard firmware built with [Zephyr RTOS](https://zephyrproject.org/) for the E73-2G4M08S1C module (nRF52840).
+
+## Features
+
+- **Dual transport**: USB HID when cable connected, BLE HID on battery
+- **Auto VBUS detection**: nRF52840 POWER peripheral detects USB cable at startup
+- **BLE Boot Protocol**: compatible with macOS, iOS, Windows, Linux, Android
+- **BLE advertising**: no timeout, fast interval, auto re-advertise on disconnect
+- **Pairing**: automatic, no PIN required, bonds cleared on startup
+- **TX Power**: +8 dBm for maximum Bluetooth range
+
+## Hardware
+
+- **Module**: [E73-2G4M08S1C](https://www.cdebyte.com/) (nRF52840, no external crystal)
+- **Clock**: internal RC oscillator (32.768kHz)
+- **Power**: VDDH from USB (5V) or battery
+- **Bootloader**: Adafruit nRF52 (UF2)
+- **Antenna**: integrated ceramic
 
 ## Requirements
 
@@ -44,64 +61,66 @@ Custom BLE keyboard firmware built with [Zephyr RTOS](https://zephyrproject.org/
 Inside the container:
 
 ```bash
-# nRF52840
-west build -p auto -b nrf52840dk_nrf52840 app/
-
-# nRF52833
-west build -p auto -b nrf52833dk_nrf52833 app/
+west build -p auto -b bmk_board app/
 ```
 
-Or use VS Code tasks (`Ctrl+Shift+B`):
-- **West Build (nRF52840)** — default build task
-- **West Build (nRF52833)**
-- **West Build - Clean** — clean rebuild
+The firmware output is at `build/zephyr/zephyr.uf2`.
 
 ## Flashing
+
+1. Double-tap reset to enter bootloader (USB mass storage appears)
+2. Drag `build/zephyr/zephyr.uf2` to the drive
+
+Or via command line:
 
 ```bash
 west flash
 ```
-
-> Requires a J-Link or compatible programmer connected to the board.
 
 ## Project Structure
 
 ```
 bmk/
 ├── .devcontainer/
-│   ├── devcontainer.json   # VS Code dev container config
-│   ├── Dockerfile          # Dev environment image
-│   └── .bashrc             # Container shell config
+│   ├── devcontainer.json       # VS Code dev container config
+│   ├── Dockerfile              # Dev environment image
+│   └── .bashrc                 # Container shell config
 ├── .vscode/
-│   └── tasks.json          # Build/flash tasks
+│   └── tasks.json              # Build/flash tasks
 ├── app/
-│   ├── CMakeLists.txt      # CMake project config
-│   ├── prj.conf            # Zephyr config (BLE, GPIO, HID)
-│   ├── west.yml            # Zephyr manifest (dependencies)
+│   ├── CMakeLists.txt          # CMake project config
+│   ├── prj.conf                # Zephyr config (BLE, USB, HID)
+│   ├── west.yml                # Zephyr manifest (dependencies)
+│   ├── boards/
+│   │   └── arm/bmk_board/      # Custom board for E73-2G4M08S1C
+│   │       ├── bmk_board.dts   # Device tree (flash partitions, USB, GPIO)
+│   │       ├── bmk_board_defconfig  # Board defaults (clock, flash, NVS)
+│   │       ├── Kconfig.board   # Board Kconfig definition
+│   │       └── Kconfig.defconfig    # Board Kconfig defaults
 │   └── src/
-│       └── main.c          # Firmware entry point
+│       └── main.c              # Firmware (USB HID + BLE HID + GATT)
 ```
 
-## Supported Boards
+## Transport Priority
 
-| Board | Build target |
-|-------|-------------|
-| nRF52840 DK | `nrf52840dk_nrf52840` |
-| nRF52833 DK | `nrf52833dk_nrf52833` |
+| Startup condition | USB HID | BLE HID | Active transport |
+|-------------------|---------|---------|-----------------|
+| USB cable connected | Enabled | Enabled | USB (priority) |
+| Battery only | Disabled | Enabled | BLE |
 
 ## Docker Volumes
 
 The devcontainer uses Docker volumes to persist Zephyr and modules across container rebuilds:
 
-| Volume | Path | Content |
-|--------|------|---------|
-| `bmk-zephyr` | `/workspaces/bmk/zephyr` | Zephyr RTOS source |
-| `bmk-modules` | `/workspaces/bmk/modules` | HAL, libraries |
-| `bmk-tools` | `/workspaces/bmk/tools` | Build tools |
-| `bmk-bootloader` | `/workspaces/bmk/bootloader` | MCUboot |
-| `bmk-root-user` | `/root` | User cache, west config |
+| Volume | Content |
+|--------|---------|
+| `bmk-zephyr` | Zephyr RTOS source |
+| `bmk-modules` | HAL, libraries |
+| `bmk-tools` | Build tools |
+| `bmk-bootloader` | MCUboot |
+| `bmk-root-user` | User cache, west config |
 
-To reset the workspace from scratch, remove the volumes:
+To reset the workspace from scratch:
 
 ```bash
 docker volume rm bmk-zephyr bmk-modules bmk-tools bmk-bootloader bmk-root-user
