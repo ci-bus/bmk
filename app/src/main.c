@@ -1,6 +1,7 @@
 /*
- * BMK Keyboard Firmware - BLE HID only (testing)
- * Includes Boot Protocol for macOS/iOS compatibility
+ * BMK Keyboard Firmware
+ * USB HID + BLE HID with Boot Protocol
+ * Priority: USB when connected, BLE otherwise
  */
 
 #include <zephyr/kernel.h>
@@ -8,6 +9,9 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/class/usb_hid.h>
+#include <hal/nrf_power.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -36,9 +40,9 @@ static const uint8_t hello_world[][2] = {
 
 /* HID Report Descriptor: Standard Keyboard (no Report ID) */
 static const uint8_t hid_report_map[] = {
-	0x05, 0x01,       /* Usage Page (Generic Desktop) */
-	0x09, 0x06,       /* Usage (Keyboard) */
-	0xA1, 0x01,       /* Collection (Application) */
+	0x05, 0x01,
+	0x09, 0x06,
+	0xA1, 0x01,
 
 	/* Modifier keys (8 bits) */
 	0x05, 0x07,
@@ -48,12 +52,12 @@ static const uint8_t hid_report_map[] = {
 	0x25, 0x01,
 	0x75, 0x01,
 	0x95, 0x08,
-	0x81, 0x02,       /* Input (Data, Variable, Absolute) */
+	0x81, 0x02,
 
 	/* Reserved byte */
 	0x75, 0x08,
 	0x95, 0x01,
-	0x81, 0x01,       /* Input (Constant) */
+	0x81, 0x01,
 
 	/* LED output (5 bits + 3 padding) */
 	0x05, 0x08,
@@ -61,10 +65,10 @@ static const uint8_t hid_report_map[] = {
 	0x29, 0x05,
 	0x75, 0x01,
 	0x95, 0x05,
-	0x91, 0x02,       /* Output (Data, Variable, Absolute) */
+	0x91, 0x02,
 	0x75, 0x03,
 	0x95, 0x01,
-	0x91, 0x01,       /* Output (Constant) */
+	0x91, 0x01,
 
 	/* Key codes (6 bytes) */
 	0x05, 0x07,
@@ -74,26 +78,82 @@ static const uint8_t hid_report_map[] = {
 	0x25, 0x65,
 	0x75, 0x08,
 	0x95, 0x06,
-	0x81, 0x00,       /* Input (Data, Array) */
+	0x81, 0x00,
 
-	0xC0              /* End Collection */
+	0xC0
 };
 
-/* Report buffer: modifier(1) + reserved(1) + keys(6) = 8 bytes */
+/* Report buffers */
 static uint8_t report[8];
-static uint8_t boot_report[8]; /* Boot keyboard input report */
+static uint8_t boot_report[8];
 
-static bool notify_enabled;
+/* ==================== USB HID ==================== */
+
+static const struct device *usb_hid_dev;
+static volatile bool usb_configured;
+
+static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
+{
+	switch (status) {
+	case USB_DC_CONFIGURED:
+		usb_configured = true;
+		LOG_INF("USB configured");
+		break;
+	case USB_DC_DISCONNECTED:
+	case USB_DC_SUSPEND:
+		usb_configured = false;
+		LOG_INF("USB disconnected/suspended");
+		break;
+	default:
+		break;
+	}
+}
+
+static void usb_int_in_ready(const struct device *dev)
+{
+	/* EP ready */
+}
+
+static const struct hid_ops usb_ops = {
+	.int_in_ready = usb_int_in_ready,
+};
+
+static int usb_send_key(uint8_t modifier, uint8_t keycode)
+{
+	int err;
+
+	if (!usb_configured) {
+		return -ENOTCONN;
+	}
+
+	/* Key press */
+	memset(report, 0, sizeof(report));
+	report[0] = modifier;
+	report[2] = keycode;
+	err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
+	if (err) {
+		return err;
+	}
+	k_sleep(K_MSEC(50));
+
+	/* Key release */
+	memset(report, 0, sizeof(report));
+	err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
+	k_sleep(K_MSEC(50));
+
+	return err;
+}
+
+/* ==================== BLE HID ==================== */
+
+static bool ble_notify_enabled;
 static bool boot_notify_enabled;
 static struct bt_conn *current_conn;
-static uint8_t protocol_mode = 0x01; /* 0x00=Boot, 0x01=Report */
-
-/* ==================== GATT Callbacks ==================== */
+static uint8_t protocol_mode = 0x01;
 
 static ssize_t read_hid_info(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			     void *buf, uint16_t len, uint16_t offset)
 {
-	/* bcdHID=1.11, bCountryCode=0, Flags=0x02(normally connectable) */
 	static const uint8_t info[] = { 0x11, 0x01, 0x00, 0x02 };
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, info, sizeof(info));
 }
@@ -113,18 +173,17 @@ static ssize_t read_report(struct bt_conn *conn, const struct bt_gatt_attr *attr
 
 static void report_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
-	notify_enabled = (value == BT_GATT_CCC_NOTIFY);
-	LOG_INF("Report notifications %s", notify_enabled ? "enabled" : "disabled");
+	ble_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Report notifications %s", ble_notify_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_report_ref(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			       void *buf, uint16_t len, uint16_t offset)
 {
-	static const uint8_t ref[] = { 0x00, 0x01 }; /* ID 0, type Input */
+	static const uint8_t ref[] = { 0x00, 0x01 };
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, ref, sizeof(ref));
 }
 
-/* Boot Keyboard Input Report */
 static ssize_t read_boot_report(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 				void *buf, uint16_t len, uint16_t offset)
 {
@@ -137,7 +196,6 @@ static void boot_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 	LOG_INF("Boot notifications %s", boot_notify_enabled ? "enabled" : "disabled");
 }
 
-/* Protocol Mode */
 static ssize_t read_protocol_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 				  void *buf, uint16_t len, uint16_t offset)
 {
@@ -149,88 +207,49 @@ static ssize_t write_protocol_mode(struct bt_conn *conn, const struct bt_gatt_at
 				   const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
 	const uint8_t *val = buf;
-
 	if (len != 1 || offset != 0) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
-
 	protocol_mode = *val;
-	LOG_INF("Protocol mode set to %s", protocol_mode ? "Report" : "Boot");
+	LOG_INF("Protocol mode: %s", protocol_mode ? "Report" : "Boot");
 	return len;
 }
 
-/* HID Control Point */
 static ssize_t write_ctrl_point(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 				const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
 	return len;
 }
 
-/* ==================== HID GATT Service ==================== */
 /*
- * Attribute index map:
- * [0]  Primary Service
- * [1]  HID Info char decl
- * [2]  HID Info char value
- * [3]  Report Map char decl
- * [4]  Report Map char value
- * [5]  Report char decl
- * [6]  Report char value        <-- notify on this for Report Protocol
- * [7]  Report CCC
- * [8]  Report Reference
- * [9]  Boot KB Input char decl
- * [10] Boot KB Input char value  <-- notify on this for Boot Protocol
- * [11] Boot KB Input CCC
- * [12] Protocol Mode char decl
- * [13] Protocol Mode char value
- * [14] Control Point char decl
- * [15] Control Point char value
+ * HID GATT Service attribute index map:
+ * [6]  Report char value (Report Protocol notify)
+ * [10] Boot KB Input char value (Boot Protocol notify)
  */
 BT_GATT_SERVICE_DEFINE(hid_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_HIDS),
-
-	/* HID Information */
-	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_INFO,
-			       BT_GATT_CHRC_READ,
-			       BT_GATT_PERM_READ,
-			       read_hid_info, NULL, NULL),
-
-	/* Report Map */
-	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT_MAP,
-			       BT_GATT_CHRC_READ,
-			       BT_GATT_PERM_READ,
-			       read_report_map, NULL, NULL),
-
-	/* Input Report (Report Protocol) */
+	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_INFO, BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ, read_hid_info, NULL, NULL),
+	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT_MAP, BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ, read_report_map, NULL, NULL),
 	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       read_report, NULL, NULL),
+			       BT_GATT_PERM_READ, read_report, NULL, NULL),
 	BT_GATT_CCC(report_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ,
 			   read_report_ref, NULL, NULL),
-
-	/* Boot Keyboard Input Report */
 	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_BOOT_KB_IN_REPORT,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ,
-			       read_boot_report, NULL, NULL),
+			       BT_GATT_PERM_READ, read_boot_report, NULL, NULL),
 	BT_GATT_CCC(boot_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-
-	/* Protocol Mode */
 	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_PROTOCOL_MODE,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 			       read_protocol_mode, write_protocol_mode, NULL),
-
-	/* HID Control Point */
 	BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT,
 			       BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-			       BT_GATT_PERM_WRITE,
-			       NULL, write_ctrl_point, NULL),
+			       BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL),
 );
-
-/* ==================== BLE Send Key ==================== */
 
 static int ble_send_key(uint8_t modifier, uint8_t keycode)
 {
@@ -242,18 +261,16 @@ static int ble_send_key(uint8_t modifier, uint8_t keycode)
 		return -ENOTCONN;
 	}
 
-	/* Choose report type based on protocol mode */
 	if (protocol_mode == 0x00 && boot_notify_enabled) {
 		buf = boot_report;
-		attr = &hid_svc.attrs[10]; /* Boot KB Input */
-	} else if (notify_enabled) {
+		attr = &hid_svc.attrs[10];
+	} else if (ble_notify_enabled) {
 		buf = report;
-		attr = &hid_svc.attrs[6]; /* Report */
+		attr = &hid_svc.attrs[6];
 	} else {
 		return -ENOTCONN;
 	}
 
-	/* Key press */
 	memset(buf, 0, 8);
 	buf[0] = modifier;
 	buf[2] = keycode;
@@ -263,7 +280,6 @@ static int ble_send_key(uint8_t modifier, uint8_t keycode)
 	}
 	k_sleep(K_MSEC(50));
 
-	/* Key release */
 	memset(buf, 0, 8);
 	err = bt_gatt_notify(current_conn, attr, buf, 8);
 	k_sleep(K_MSEC(50));
@@ -273,7 +289,6 @@ static int ble_send_key(uint8_t modifier, uint8_t keycode)
 
 /* ==================== Connection Management ==================== */
 
-/* Advertising data */
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL,
@@ -306,8 +321,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	}
 	LOG_INF("BLE connected");
 	current_conn = bt_conn_ref(conn);
-
-	/* Request security for HID */
 	bt_conn_set_security(conn, BT_SECURITY_L2);
 }
 
@@ -318,10 +331,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		bt_conn_unref(current_conn);
 		current_conn = NULL;
 	}
-	notify_enabled = false;
+	ble_notify_enabled = false;
 	boot_notify_enabled = false;
 	protocol_mode = 0x01;
-
 	start_advertising();
 }
 
@@ -341,7 +353,6 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.security_changed = security_changed,
 };
 
-/* Accept all pairing requests */
 static void auth_cancel(struct bt_conn *conn)
 {
 	LOG_INF("Pairing cancelled");
@@ -360,6 +371,17 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 	.pairing_complete = auth_pairing_complete,
 };
 
+/* ==================== Send Key (auto-selects transport) ==================== */
+
+static int send_key(uint8_t modifier, uint8_t keycode)
+{
+	/* Priority: USB if configured, otherwise BLE */
+	if (usb_configured) {
+		return usb_send_key(modifier, keycode);
+	}
+	return ble_send_key(modifier, keycode);
+}
+
 /* ==================== Main ==================== */
 
 int main(void)
@@ -368,7 +390,7 @@ int main(void)
 
 	LOG_INF("BMK Keyboard starting...");
 
-	/* BLE init */
+	/* BLE init first -- always available */
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)", err);
@@ -376,26 +398,39 @@ int main(void)
 	}
 	LOG_INF("Bluetooth ready");
 
-	/* Register auth callbacks */
 	bt_conn_auth_cb_register(&auth_cb);
 	bt_conn_auth_info_cb_register(&auth_info_cb);
 
-	/* Clear all bonds on startup */
 	bt_unpair(BT_ID_DEFAULT, BT_ADDR_LE_ANY);
 	LOG_INF("Bonds cleared");
 
-	/* Start advertising */
 	start_advertising();
 	LOG_INF("Advertising as '%s'", CONFIG_BT_DEVICE_NAME);
 
-	while (1) {
-		if (current_conn && (notify_enabled || boot_notify_enabled)) {
-			for (size_t i = 0; i < ARRAY_SIZE(hello_world); i++) {
-				if (ble_send_key(hello_world[i][0], hello_world[i][1])) {
-					break;
-				}
+	/* USB HID init -- only if VBUS detected */
+	if (nrf_power_usbregstatus_vbusdet_get(NRF_POWER)) {
+		LOG_INF("VBUS detected, initializing USB");
+		usb_hid_dev = device_get_binding("HID_0");
+		if (usb_hid_dev) {
+			usb_hid_register_device(usb_hid_dev, hid_report_map,
+						sizeof(hid_report_map), &usb_ops);
+			usb_hid_init(usb_hid_dev);
+			err = usb_enable(usb_status_cb);
+			if (err) {
+				LOG_WRN("USB enable failed (err %d)", err);
+			} else {
+				LOG_INF("USB HID ready");
 			}
-			LOG_INF("Typed 'Hello World'");
+		}
+	} else {
+		LOG_INF("No VBUS -- battery mode, BLE only");
+	}
+
+	while (1) {
+		for (size_t i = 0; i < ARRAY_SIZE(hello_world); i++) {
+			if (send_key(hello_world[i][0], hello_world[i][1])) {
+				break;
+			}
 		}
 
 		k_sleep(K_SECONDS(5));
