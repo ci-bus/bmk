@@ -1,0 +1,14 @@
+description: BMK keyboard scan matrix
+
+compatible: "bmk,kscan-matrix"
+
+properties:
+  col-gpios:
+    type: phandle-array
+    required: true
+    description: Column GPIO pins (active high output)
+
+  row-gpios:
+    type: phandle-array
+    required: true
+    description: Row GPIO pins (active high input with pull-down)

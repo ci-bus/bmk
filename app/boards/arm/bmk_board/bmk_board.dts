@@ -21,6 +21,33 @@
 		zephyr,console = &uart0;
 		zephyr,shell-uart = &uart0;
 	};
+
+	matrix {
+		compatible = "bmk,kscan-matrix";
+
+		col-gpios
+			= <&gpio0 28 GPIO_ACTIVE_HIGH>   /* Col 0: P0.28 */
+			, <&gpio0 22 GPIO_ACTIVE_HIGH>   /* Col 1: P0.22 */
+			, <&gpio0 31 GPIO_ACTIVE_HIGH>   /* Col 2: P0.31 */
+			, <&gpio0 29 GPIO_ACTIVE_HIGH>   /* Col 3: P0.29 */
+			, <&gpio0  2 GPIO_ACTIVE_HIGH>   /* Col 4: P0.02 */
+			, <&gpio1 13 GPIO_ACTIVE_HIGH>   /* Col 5: P1.13 */
+			, <&gpio0  3 GPIO_ACTIVE_HIGH>   /* Col 6: P0.03 */
+			, <&gpio1 11 GPIO_ACTIVE_HIGH>   /* Col 7: P1.11 */
+			;
+
+		row-gpios
+			= <&gpio0 13 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 0: P0.13 */
+			, <&gpio0 24 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 1: P0.24 */
+			, <&gpio0 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 2: P0.10 */
+			, <&gpio0  4 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 3: P0.04 */
+			, <&gpio0 12 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 4: P0.12 */
+			, <&gpio0  7 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 5: P0.07 */
+			, <&gpio1  2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 6: P1.02 */
+			, <&gpio1  4 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 7: P1.04 */
+			, <&gpio1  6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>   /* Row 8: P1.06 */
+			;
+	};
 };
 
 &adc {

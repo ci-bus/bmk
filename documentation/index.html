@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BMK - Zephyr HID Keycodes Reference</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+h1 { text-align: center; margin-bottom: 10px; color: #e94560; }
+.subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 14px; }
+.keyboard { display: flex; flex-direction: column; gap: 4px; max-width: 1200px; margin: 0 auto; }
+.row { display: flex; gap: 4px; }
+.key {
+  height: 48px; min-width: 48px; border: 1px solid #444; border-radius: 6px;
+  background: linear-gradient(180deg, #2a2a4a, #1e1e3a); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+  color: #ccc; user-select: none; position: relative; transition: all 0.1s;
+  padding: 0 4px; text-align: center;
+}
+.key:hover { background: linear-gradient(180deg, #3a3a6a, #2e2e5a); border-color: #e94560; color: #fff; }
+.key:active, .key.active { background: #e94560; color: #fff; border-color: #e94560; }
+.key .label { font-size: 11px; line-height: 1.2; }
+.key .sub { font-size: 8px; color: #888; position: absolute; bottom: 2px; }
+.w125 { min-width: 62px; } .w150 { min-width: 74px; } .w175 { min-width: 86px; }
+.w200 { min-width: 100px; } .w225 { min-width: 112px; } .w275 { min-width: 136px; }
+.w625 { min-width: 308px; } .spacer { min-width: 16px; }
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: #e94560; color: #fff; padding: 12px 24px; border-radius: 8px;
+  font-size: 14px; font-family: monospace; opacity: 0; transition: opacity 0.3s;
+  pointer-events: none; z-index: 100; white-space: nowrap;
+}
+#toast.show { opacity: 1; }
+#info {
+  max-width: 1200px; margin: 20px auto; padding: 16px; background: #16213e;
+  border-radius: 8px; border: 1px solid #333; font-family: monospace; font-size: 13px;
+  min-height: 60px; display: flex; flex-direction: column; gap: 4px;
+}
+#info .zname { color: #e94560; font-size: 16px; }
+#info .hex { color: #0f3460; font-size: 13px; }
+#info .desc { color: #888; font-size: 12px; }
+table { max-width: 1200px; margin: 20px auto; border-collapse: collapse; width: 100%; font-size: 12px; }
+table th { background: #16213e; padding: 8px; text-align: left; border: 1px solid #333; color: #e94560; }
+table td { padding: 6px 8px; border: 1px solid #333; font-family: monospace; }
+table tr:hover { background: #16213e; }
+.mod-table { color: #0f9; }
+</style>
+</head>
+<body>
+
+<h1>BMK Keyboard - Zephyr HID Keycodes</h1>
+<p class="subtitle">Click any key to copy its Zephyr constant name</p>
+
+<div id="info">
+  <span class="desc">Click a key on the keyboard below</span>
+</div>
+
+<div class="keyboard" id="keyboard"></div>
+
+<div id="toast"></div>
+
+<h2 style="max-width:1200px;margin:30px auto 10px;color:#e94560;">Modifier Constants</h2>
+<table>
+<tr><th>Key</th><th>Zephyr Constant</th><th>Bit</th><th>HID Keycode (for keymap)</th></tr>
+<tr><td>Left Ctrl</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_CTRL</td><td>0x01</td><td>0xE0</td></tr>
+<tr><td>Left Shift</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_SHIFT</td><td>0x02</td><td>0xE1</td></tr>
+<tr><td>Left Alt</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_ALT</td><td>0x04</td><td>0xE2</td></tr>
+<tr><td>Left GUI</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_UI</td><td>0x08</td><td>0xE3</td></tr>
+<tr><td>Right Ctrl</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_CTRL</td><td>0x10</td><td>0xE4</td></tr>
+<tr><td>Right Shift</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_SHIFT</td><td>0x20</td><td>0xE5</td></tr>
+<tr><td>Right Alt</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_ALT</td><td>0x40</td><td>0xE6</td></tr>
+<tr><td>Right GUI</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_UI</td><td>0x80</td><td>0xE7</td></tr>
+</table>
+
+<script>
+const keys = [
+  // Row 0: Function row
+  [
+    {l:"Esc",z:"HID_KEY_ESC",c:0x29},
+    {s:1},
+    {l:"F1",z:"HID_KEY_F1",c:0x3A},{l:"F2",z:"HID_KEY_F2",c:0x3B},{l:"F3",z:"HID_KEY_F3",c:0x3C},{l:"F4",z:"HID_KEY_F4",c:0x3D},
+    {s:0.5},
+    {l:"F5",z:"HID_KEY_F5",c:0x3E},{l:"F6",z:"HID_KEY_F6",c:0x3F},{l:"F7",z:"HID_KEY_F7",c:0x40},{l:"F8",z:"HID_KEY_F8",c:0x41},
+    {s:0.5},
+    {l:"F9",z:"HID_KEY_F9",c:0x42},{l:"F10",z:"HID_KEY_F10",c:0x43},{l:"F11",z:"HID_KEY_F11",c:0x44},{l:"F12",z:"HID_KEY_F12",c:0x45},
+    {s:0.25},
+    {l:"PrtSc",z:"HID_KEY_PRINTSCREEN",c:0x46},{l:"Scroll",z:"HID_KEY_SCROLLLOCK",c:0x47},{l:"Pause",z:"HID_KEY_PAUSE",c:0x48},
+  ],
+  // Row 1: Number row
+  [
+    {l:"`\n~",z:"HID_KEY_GRAVE",c:0x35},
+    {l:"1\n!",z:"HID_KEY_1",c:0x1E},{l:"2\n@",z:"HID_KEY_2",c:0x1F},{l:"3\n#",z:"HID_KEY_3",c:0x20},{l:"4\n$",z:"HID_KEY_4",c:0x21},
+    {l:"5\n%",z:"HID_KEY_5",c:0x22},{l:"6\n^",z:"HID_KEY_6",c:0x23},{l:"7\n&",z:"HID_KEY_7",c:0x24},{l:"8\n*",z:"HID_KEY_8",c:0x25},
+    {l:"9\n(",z:"HID_KEY_9",c:0x26},{l:"0\n)",z:"HID_KEY_0",c:0x27},
+    {l:"-\n_",z:"HID_KEY_MINUS",c:0x2D},{l:"=\n+",z:"HID_KEY_EQUAL",c:0x2E},
+    {l:"Backspace",z:"HID_KEY_BACKSPACE",c:0x2A,w:2},
+    {s:0.25},
+    {l:"Ins",z:"HID_KEY_INSERT",c:0x49},{l:"Home",z:"HID_KEY_HOME",c:0x4A},{l:"PgUp",z:"HID_KEY_PAGEUP",c:0x4B},
+    {s:0.25},
+    {l:"Num",z:"HID_KEY_NUMLOCK",c:0x53},{l:"/",z:"HID_KEY_KPSLASH",c:0x54},{l:"*",z:"HID_KEY_KPASTERISK",c:0x55},{l:"-",z:"HID_KEY_KPMINUS",c:0x56},
+  ],
+  // Row 2: QWERTY
+  [
+    {l:"Tab",z:"HID_KEY_TAB",c:0x2B,w:1.5},
+    {l:"Q",z:"HID_KEY_Q",c:0x14},{l:"W",z:"HID_KEY_W",c:0x1A},{l:"E",z:"HID_KEY_E",c:0x08},{l:"R",z:"HID_KEY_R",c:0x15},
+    {l:"T",z:"HID_KEY_T",c:0x17},{l:"Y",z:"HID_KEY_Y",c:0x1C},{l:"U",z:"HID_KEY_U",c:0x18},{l:"I",z:"HID_KEY_I",c:0x0C},
+    {l:"O",z:"HID_KEY_O",c:0x12},{l:"P",z:"HID_KEY_P",c:0x13},
+    {l:"[\n{",z:"HID_KEY_LEFTBRACE",c:0x2F},{l:"]\n}",z:"HID_KEY_RIGHTBRACE",c:0x30},
+    {l:"\\\n|",z:"HID_KEY_BACKSLASH",c:0x31,w:1.5},
+    {s:0.25},
+    {l:"Del",z:"HID_KEY_DELETE",c:0x4C},{l:"End",z:"HID_KEY_END",c:0x4D},{l:"PgDn",z:"HID_KEY_PAGEDOWN",c:0x4E},
+    {s:0.25},
+    {l:"7",z:"HID_KEY_KP7",c:0x5F},{l:"8",z:"HID_KEY_KP8",c:0x60},{l:"9",z:"HID_KEY_KP9",c:0x61},{l:"+",z:"HID_KEY_KPPLUS",c:0x57},
+  ],
+  // Row 3: Home row
+  [
+    {l:"Caps",z:"HID_KEY_CAPSLOCK",c:0x39,w:1.75},
+    {l:"A",z:"HID_KEY_A",c:0x04},{l:"S",z:"HID_KEY_S",c:0x16},{l:"D",z:"HID_KEY_D",c:0x07},{l:"F",z:"HID_KEY_F",c:0x09},
+    {l:"G",z:"HID_KEY_G",c:0x0A},{l:"H",z:"HID_KEY_H",c:0x0B},{l:"J",z:"HID_KEY_J",c:0x0D},{l:"K",z:"HID_KEY_K",c:0x0E},
+    {l:"L",z:"HID_KEY_L",c:0x0F},
+    {l:";\n:",z:"HID_KEY_SEMICOLON",c:0x33},{l:"'\n\"",z:"HID_KEY_APOSTROPHE",c:0x34},
+    {l:"Enter",z:"HID_KEY_ENTER",c:0x28,w:2.25},
+    {s:3.5},
+    {l:"4",z:"HID_KEY_KP4",c:0x5C},{l:"5",z:"HID_KEY_KP5",c:0x5D},{l:"6",z:"HID_KEY_KP6",c:0x5E},
+  ],
+  // Row 4: Shift row
+  [
+    {l:"Shift",z:"0xE1",c:0xE1,w:2.25,mod:"HID_KBD_MODIFIER_LEFT_SHIFT"},
+    {l:"Z",z:"HID_KEY_Z",c:0x1D},{l:"X",z:"HID_KEY_X",c:0x1B},{l:"C",z:"HID_KEY_C",c:0x06},{l:"V",z:"HID_KEY_V",c:0x19},
+    {l:"B",z:"HID_KEY_B",c:0x05},{l:"N",z:"HID_KEY_N",c:0x11},{l:"M",z:"HID_KEY_M",c:0x10},
+    {l:",\n<",z:"HID_KEY_COMMA",c:0x36},{l:".\n>",z:"HID_KEY_DOT",c:0x37},{l:"/\n?",z:"HID_KEY_SLASH",c:0x38},
+    {l:"Shift",z:"0xE5",c:0xE5,w:2.75,mod:"HID_KBD_MODIFIER_RIGHT_SHIFT"},
+    {s:1.25},
+    {l:"\u2191",z:"HID_KEY_UP",c:0x52},
+    {s:1.25},
+    {l:"1",z:"HID_KEY_KP1",c:0x59},{l:"2",z:"HID_KEY_KP2",c:0x5A},{l:"3",z:"HID_KEY_KP3",c:0x5B},
+    {l:"Enter",z:"HID_KEY_KPENTER",c:0x58},
+  ],
+  // Row 5: Bottom row
+  [
+    {l:"Ctrl",z:"0xE0",c:0xE0,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_CTRL"},
+    {l:"GUI",z:"0xE3",c:0xE3,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_UI"},
+    {l:"Alt",z:"0xE2",c:0xE2,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_ALT"},
+    {l:"Space",z:"HID_KEY_SPACE",c:0x2C,w:6.25},
+    {l:"Alt",z:"0xE6",c:0xE6,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_ALT"},
+    {l:"GUI",z:"0xE7",c:0xE7,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_UI"},
+    {l:"Menu",z:"HID_KEY_COMPOSE",c:0x65,w:1.25},
+    {l:"Ctrl",z:"0xE4",c:0xE4,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_CTRL"},
+    {s:0.25},
+    {l:"\u2190",z:"HID_KEY_LEFT",c:0x50},{l:"\u2193",z:"HID_KEY_DOWN",c:0x51},{l:"\u2192",z:"HID_KEY_RIGHT",c:0x4F},
+    {s:0.25},
+    {l:"0",z:"HID_KEY_KP0",c:0x62,w:2},{l:".",z:"HID_KEY_KPDOT",c:0x63},
+  ],
+];
+
+const kb = document.getElementById('keyboard');
+const info = document.getElementById('info');
+const toast = document.getElementById('toast');
+
+let toastTimeout;
+
+function showToast(text) {
+  toast.textContent = text + ' - Copied!';
+  toast.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+function onKeyClick(k) {
+  const copyText = k.mod || k.z;
+  navigator.clipboard.writeText(copyText).then(() => showToast(copyText));
+
+  let html = `<span class="zname">${k.z}</span>`;
+  html += `<span class="hex">Value: 0x${k.c.toString(16).toUpperCase().padStart(2,'0')}</span>`;
+  if (k.mod) {
+    html += `<span class="desc">Modifier bit constant: <span style="color:#0f9">${k.mod}</span></span>`;
+    html += `<span class="desc">For keymap use: 0x${k.c.toString(16).toUpperCase().padStart(2,'0')}</span>`;
+  } else {
+    html += `<span class="desc">Usage: .kc = ${k.z}</span>`;
+  }
+  info.innerHTML = html;
+}
+
+keys.forEach(row => {
+  const rowDiv = document.createElement('div');
+  rowDiv.className = 'row';
+
+  row.forEach(k => {
+    if (k.s !== undefined) {
+      const spacer = document.createElement('div');
+      spacer.style.width = (k.s * 48 + (k.s - 1) * 4) + 'px';
+      rowDiv.appendChild(spacer);
+      return;
+    }
+
+    const keyDiv = document.createElement('div');
+    keyDiv.className = 'key';
+    if (k.w) {
+      keyDiv.style.minWidth = (k.w * 48 + (k.w - 1) * 4) + 'px';
+    }
+
+    const label = k.l.replace('\n', '<br>');
+    keyDiv.innerHTML = `<span class="label">${label}</span>`;
+
+    if (k.mod) {
+      keyDiv.style.borderColor = '#0f9';
+      keyDiv.style.color = '#0f9';
+    }
+
+    keyDiv.addEventListener('click', () => {
+      document.querySelectorAll('.key.active').forEach(el => el.classList.remove('active'));
+      keyDiv.classList.add('active');
+      onKeyClick(k);
+    });
+
+    rowDiv.appendChild(keyDiv);
+  });
+
+  kb.appendChild(rowDiv);
+});
+</script>
+</body>
+</html>

@@ -77,6 +77,9 @@ Or via command line:
 west flash
 ```
 
+## Links
+[Keycodes](https://docs.zephyrproject.org/latest/doxygen/html/group__usb__hid__mk__report__desc.html)
+
 ## Project Structure
 
 ```
