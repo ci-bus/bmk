@@ -61,7 +61,7 @@ Custom USB + BLE HID keyboard firmware built with [Zephyr RTOS](https://zephyrpr
 Inside the container:
 
 ```bash
-west build -p auto -b bmk_board app/
+west build -p auto -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1
 ```
 
 The firmware output is at `build/zephyr/zephyr.uf2`.

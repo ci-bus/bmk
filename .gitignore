@@ -2,7 +2,8 @@
 build/
 
 # Zephyr modules (fetched by west)
-zephyr/
+.west
+/zephyr/
 modules/
 bootloader/
 tools/

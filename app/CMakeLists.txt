@@ -10,8 +10,10 @@ if(NOT DEFINED KEYBOARD)
   message(FATAL_ERROR "KEYBOARD not defined. Example: -DKEYBOARD=miguelio/mk60v1")
 endif()
 
+target_include_directories(app PRIVATE src)
+
 target_sources(app PRIVATE
-  src/main.c
-  keyboards/${KEYBOARD}/keymap.c
   keyboards/${KEYBOARD}/matrix.c
+  keyboards/${KEYBOARD}/keymap.c
+  src/main.c
 )
