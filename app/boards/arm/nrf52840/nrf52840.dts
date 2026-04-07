@@ -11,8 +11,8 @@
 #include <nordic/nrf52840_qiaa.dtsi>
 
 / {
-	model = "bmk_board";
-	compatible = "bmk_board";
+	model = "nrf52840";
+	compatible = "nrf52840";
 
 	chosen {
 		zephyr,code-partition = &code_partition;
