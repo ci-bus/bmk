@@ -18,106 +18,15 @@
 #include <zephyr/logging/log.h>
 
 #include "matrix.h"
+#include "keymap.h"
 
-/* Keycodes */
-static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {
-	// Row 0
-	{.kc = HID_KEY_ESC},   // Col 0
-	{.kc = 0},			   // Col 1
-	{.kc = HID_KEY_2},     // Col 2
-	{.kc = HID_KEY_4},     // Col 3
-	{.kc = HID_KEY_6},     // Col 4
-	{.kc = HID_KEY_8},     // Col 5
-	{.kc = HID_KEY_0},     // Col 6
-	{.kc = HID_KEY_EQUAL}, // Col 7
-	// Row 1
-	{.kc = HID_KEY_1},     // Col 0
-	{.kc = 0},			   // Col 1
-	{.kc = HID_KEY_3},     // Col 2
-	{.kc = HID_KEY_5},     // ...
-	{.kc = HID_KEY_7},
-	{.kc = HID_KEY_9},
-	{.kc = HID_KEY_MINUS},
-	{.kc = HID_KEY_BACKSPACE},
-	// Row 2
-	{.kc = HID_KEY_TAB},
-	{.kc = HID_KEY_Q},
-	{.kc = HID_KEY_E},
-	{.kc = HID_KEY_T},
-	{.kc = HID_KEY_U},
-	{.kc = HID_KEY_O},
-	{.kc = HID_KEY_LEFTBRACE},
-	{.kc = HID_KEY_BACKSLASH},
-	// Row 3
-	{.kc = HID_KEY_CAPSLOCK},
-	{.kc = 0},
-	{.kc = HID_KEY_W},
-	{.kc = HID_KEY_R},
-	{.kc = HID_KEY_Y},
-	{.kc = HID_KEY_I},
-	{.kc = HID_KEY_P},
-	{.kc = HID_KEY_RIGHTBRACE},
-	// Row 4
-	{.kc = 0},
-	{.kc = HID_KEY_A},
-	{.kc = HID_KEY_D},
-	{.kc = HID_KEY_G},
-	{.kc = HID_KEY_J},
-	{.kc = HID_KEY_L},
-	{.kc = HID_KEY_APOSTROPHE},
-	{.kc = HID_KEY_ENTER},
-	// Row 5
-	{.kc = 0},
-	{.kc = 0},
-	{.kc = HID_KEY_S},
-	{.kc = HID_KEY_F},
-	{.kc = HID_KEY_H},
-	{.kc = HID_KEY_K},
-	{.kc = HID_KEY_SEMICOLON},
-	{.kc = HID_KEY_BACKSLASH},
-	// Row 6
-	{.kc = 0},
-	{.kc = HID_KEY_Z},
-	{.kc = HID_KEY_C},
-	{.kc = HID_KEY_B},
-	{.kc = HID_KEY_M},
-	{.kc = HID_KEY_DOT},
-	{.kc = HID_KBD_MODIFIER_RIGHT_SHIFT},
-	{.kc = HID_KEY_SLASH},
-	// Row 7
-	{.kc = HID_KBD_MODIFIER_LEFT_SHIFT},
-	{.kc = HID_KEY_NUBS},
-	{.kc = HID_KEY_X},
-	{.kc = HID_KEY_V},
-	{.kc = HID_KEY_N},
-	{.kc = HID_KEY_COMMA},
-	{.kc = HID_KEY_LEFT},
-	{.kc = HID_KEY_UP},
-	// Row 8
-	{.kc = HID_KBD_MODIFIER_LEFT_CTRL},
-	{.kc = HID_KBD_MODIFIER_LEFT_UI},
-	{.kc = HID_KBD_MODIFIER_LEFT_ALT},
-	{.kc = HID_KEY_SPACE},
-	{.kc = HID_KBD_MODIFIER_RIGHT_ALT},
-	{.kc = HID_KBD_MODIFIER_RIGHT_CTRL},
-	{.kc = HID_KEY_DOWN},
-	{.kc = HID_KEY_RIGHT}};
+static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
+
+static bool changed = false;
+static uint8_t current_layer = 0;
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
-/* Matrix GPIO pins from device tree */
-#define COL_GPIO_INIT(idx, _) GPIO_DT_SPEC_GET_BY_IDX(MATRIX_NODE, col_gpios, idx),
-#define ROW_GPIO_INIT(idx, _) GPIO_DT_SPEC_GET_BY_IDX(MATRIX_NODE, row_gpios, idx),
-
-static const struct gpio_dt_spec cols[] = {
-	LISTIFY(MATRIX_COLS, COL_GPIO_INIT, ())
-};
-
-static const struct gpio_dt_spec rows[] = {
-	LISTIFY(MATRIX_ROWS, ROW_GPIO_INIT, ())
-};
-
-static bool changed = false;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
@@ -187,6 +96,15 @@ static inline bool is_modifier(uint8_t keycode)
 static inline uint8_t modifier_bit(uint8_t keycode)
 {
 	return 1 << (keycode - 0xE0);
+}
+
+static void keymap_init(void)
+{
+	for (uint8_t i = 0; i < LAYERS; i++) {
+		for (uint8_t j = 0; j < MATRIX_COLS * MATRIX_ROWS; j++) {
+			keys[j].kc[i] = layers[i][j];
+		}
+	}
 }
 
 /* ==================== USB HID ==================== */
@@ -527,13 +445,14 @@ static int send_report()
 	return ble_send_report();
 }
 
-/* ===== MATRIX ===== */
+/* ================================================ *\
+|* ==================== MATRIX ==================== *|
+\* ================================================ */
 
 int matrix_init(void)
 {
 	int err;
 
-	/* Configure columns as output, initially low */
 	for (int c = 0; c < MATRIX_COLS; c++)
 	{
 		if (!gpio_is_ready_dt(&cols[c]))
@@ -549,7 +468,6 @@ int matrix_init(void)
 		}
 	}
 
-	/* Configure rows as input with pull-down */
 	for (int r = 0; r < MATRIX_ROWS; r++)
 	{
 		if (!gpio_is_ready_dt(&rows[r]))
@@ -585,7 +503,7 @@ void matrix_scan()
 		for (int r = 0; r < MATRIX_ROWS; r++)
 		{
 			idx = r * MATRIX_COLS + c;
-			if (!keys[idx].kc)
+			if (!keys[idx].kc[current_layer])
 				continue;
 			if (gpio_pin_get_dt(&rows[r]))
 			{
@@ -593,8 +511,8 @@ void matrix_scan()
 				{
 					if (keys[idx].debounce_count > DEBOUNCE_PRESS)
 					{
-						release_key(keys[idx].kc); // Hold key down once
-						int res = press_key(keys[idx].kc);
+						release_key(keys[idx].kc[current_layer]); // Hold key down once
+						int res = press_key(keys[idx].kc[current_layer]);
 						if (res != -1)
 						{
 							keys[idx].pressed = true;
@@ -621,7 +539,7 @@ void matrix_scan()
 				{
 					if (keys[idx].debounce_count > DEBOUNCE_RELEASE)
 					{
-						int res = release_key(keys[idx].kc);
+						int res = release_key(keys[idx].kc[current_layer]);
 						if (res != -1)
 						{
 							keys[idx].pressed = false;
@@ -654,7 +572,9 @@ void matrix_scan()
 	}
 }
 
-/* ==================== Main ==================== */
+/* ================================================ *\
+|* ===================== MAIN ===================== *|
+\* ================================================ */
 
 int main(void)
 {
@@ -706,12 +626,12 @@ int main(void)
 		LOG_INF("No VBUS -- battery mode, BLE only");
 	}
 
+	keymap_init();
 	matrix_init();
 
 	while (1)
 	{
 		matrix_scan();
-
 		k_sleep(K_MSEC(1));
 	}
 
