@@ -11,6 +11,7 @@ if(NOT DEFINED KEYBOARD)
 endif()
 
 target_include_directories(app PRIVATE src)
+target_include_directories(app PRIVATE keyboards/${KEYBOARD})
 
 target_sources(app PRIVATE
   keyboards/${KEYBOARD}/matrix.c

@@ -1,10 +1,7 @@
-#include <zephyr/device.h>
-#include <zephyr/usb/class/usb_hid.h>
-
-#include "keymap.h"
+#include "keyboard.h"
 
 /* Layers keycodes */
-const uint8_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS] = {
+const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODER_PINS] = {
     {
         // Col 0     Col 1    Col 2      Col 3      Col 4      Col 5      Col 6      Col 7
         HID_KEY_ESC, HID_KEY_NONE, HID_KEY_2, HID_KEY_4, HID_KEY_6, HID_KEY_8, HID_KEY_0, HID_KEY_EQUAL,                                                                                     // Row 0
@@ -15,7 +12,8 @@ const uint8_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS] = {
         HID_KEY_NONE, HID_KEY_NONE, HID_KEY_S, HID_KEY_F, HID_KEY_H, HID_KEY_K, HID_KEY_SEMICOLON, HID_KEY_BACKSLASH,                                                                        // Row 5
         HID_KEY_NONE, HID_KEY_Z, HID_KEY_C, HID_KEY_B, HID_KEY_M, HID_KEY_DOT, HID_KBD_MODIFIER_RIGHT_SHIFT, HID_KEY_SLASH,                                                                  // Row 6
         HID_KBD_MODIFIER_LEFT_SHIFT, HID_KEY_NUBS, HID_KEY_X, HID_KEY_V, HID_KEY_N, HID_KEY_COMMA, HID_KEY_LEFT, HID_KEY_UP,                                                                 // Row 7
-        HID_KBD_MODIFIER_LEFT_CTRL, HID_KBD_MODIFIER_LEFT_UI, HID_KBD_MODIFIER_LEFT_ALT, HID_KEY_SPACE, HID_KBD_MODIFIER_RIGHT_ALT, HID_KBD_MODIFIER_RIGHT_CTRL, HID_KEY_DOWN, HID_KEY_RIGHT // Row 8
+        HID_KBD_MODIFIER_LEFT_CTRL, HID_KBD_MODIFIER_LEFT_UI, HID_KBD_MODIFIER_LEFT_ALT, HID_KEY_SPACE, HID_KBD_MODIFIER_RIGHT_ALT, HID_KBD_MODIFIER_RIGHT_CTRL, HID_KEY_DOWN, HID_KEY_RIGHT, // Row 8
+        HID_KEY_VOLUME_DOWN, HID_KEY_VOLUME_UP // Encoders
     },
     {
         // Col 0 Col 1    Col 2    Col 3    Col 4    Col 5    Col 6    Col 7
@@ -27,5 +25,6 @@ const uint8_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS] = {
         HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, // Row 5
         HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, // Row 6
         HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, // Row 7
-        HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE  // Row 8
+        HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, // Row 8
+        HID_KEY_NONE, HID_KEY_NONE // Encoders
     }};

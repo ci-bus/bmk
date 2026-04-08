@@ -1,14 +1,4 @@
-#include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/logging/log.h>
-
-#include "matrix.h"
-
-LOG_MODULE_DECLARE(bmk, LOG_LEVEL_INF);
-
-#define GPIO0 DEVICE_DT_GET(DT_NODELABEL(gpio0))
-#define GPIO1 DEVICE_DT_GET(DT_NODELABEL(gpio1))
+#include "keyboard.h"
 
 const struct gpio_dt_spec cols[MATRIX_COLS] = {
     {.port = GPIO0, .pin = 28, .dt_flags = GPIO_ACTIVE_HIGH}, /* Col 0: P0.28 */
@@ -31,4 +21,9 @@ const struct gpio_dt_spec rows[MATRIX_ROWS] = {
     {.port = GPIO1, .pin = 2, .dt_flags = GPIO_ACTIVE_HIGH},  /* Row 6: P1.02 */
     {.port = GPIO1, .pin = 4, .dt_flags = GPIO_ACTIVE_HIGH},  /* Row 7: P1.04 */
     {.port = GPIO1, .pin = 6, .dt_flags = GPIO_ACTIVE_HIGH},  /* Row 8: P1.06 */
+};
+
+const struct gpio_dt_spec encoder[2] = {
+    {.port = GPIO0, .pin = 6, .dt_flags = GPIO_ACTIVE_LOW}, /* Row 0: P0.06 */
+    {.port = GPIO0, .pin = 5, .dt_flags = GPIO_ACTIVE_LOW}, /* Row 1: P0.05 */
 };
