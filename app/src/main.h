@@ -11,13 +11,18 @@
 #define DEBOUNCE_RELEASE 5
 #endif
 
+#ifndef DEBOUNCE_ENCODER
+#define DEBOUNCE_ENCODER 10
+#endif
+
 struct key {
     uint8_t kc[LAYERS];
     bool pressed;
     uint8_t debounce_count;
 };
 
-struct encoder {
+struct encoder_key {
+    uint8_t kc[LAYERS];
     uint8_t last_value;
     uint8_t debounce_count;
 };

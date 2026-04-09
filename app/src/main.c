@@ -18,6 +18,9 @@
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
+#ifdef ENCODER
+static struct encoder_key encoder_keys[ENCODER_PINS] = {0};
+#endif
 
 static bool changed = false;
 static uint8_t current_layer = 0;
@@ -101,6 +104,15 @@ static void keymap_init(void)
             keys[j].kc[i] = (uint8_t)layers[i][j];
         }
     }
+#ifdef ENCODER
+    for (uint8_t i = 0; i < LAYERS; i++)
+    {
+        for (uint8_t j = 0; j < ENCODER_PINS; j++)
+        {
+            encoder_keys[j].kc[i] = (uint8_t)layers[i][MATRIX_COLS * MATRIX_ROWS + j];
+        }
+    }
+#endif
 }
 
 /* ==================== USB HID ==================== */
@@ -479,6 +491,23 @@ int matrix_init(void)
         }
     }
 
+#ifdef ENCODER
+    for (int e = 0; e < ENCODER_PINS; e++)
+    {
+        if (!gpio_is_ready_dt(&encoder[e]))
+        {
+            LOG_ERR("Encoder pin %d GPIO not ready", e);
+            return -ENODEV;
+        }
+        err = gpio_pin_configure_dt(&encoder[e], GPIO_INPUT | GPIO_PULL_UP);
+        if (err)
+        {
+            LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
+            return err;
+        }
+    }
+#endif
+
     LOG_INF("Matrix initialized: %d cols x %d rows", MATRIX_COLS, MATRIX_ROWS);
     return 0;
 }
@@ -566,6 +595,64 @@ void matrix_scan()
     {
         send_report();
     }
+#ifdef ENCODER
+    for (uint8_t e = 0; e < ENCODER_PINS; e++)
+    {
+        uint8_t value = gpio_pin_get_dt(&encoder[e]);
+        if (value != encoder_keys[e].last_value)
+        {
+            if (encoder_keys[e].debounce_count > DEBOUNCE_ENCODER)
+            {
+                uint8_t current_value = gpio_pin_get_dt(&encoder[0]) << 1;
+                current_value |= gpio_pin_get_dt(&encoder[1]);
+                uint8_t last_value = encoder_keys[0].last_value << 1;
+                last_value |= encoder_keys[1].last_value;
+                uint16_t keycode = 0;
+                switch ((last_value << 2) | current_value)
+                {
+                // sentido antihorario
+                case 0b0010:
+                case 0b0100:
+                case 0b1101:
+                case 0b1011:
+                    keycode = encoder_keys[0].kc[current_layer];
+                    break;
+                // sentido horario
+                case 0b0001:
+                case 0b0111:
+                case 0b1110:
+                case 0b1000:
+                    keycode = encoder_keys[1].kc[current_layer];
+                    break;
+                default:
+                    break;
+                }
+                encoder_keys[e].last_value = value;
+                encoder_keys[e].debounce_count = 0;
+                if (keycode)
+                {
+                    press_key(keycode);
+                    send_report();
+                    k_sleep(K_MSEC(10));
+                    release_key(keycode);
+                    send_report();
+
+                }
+            }
+            else
+            {
+                encoder_keys[e].debounce_count++;
+            }
+        }
+        else
+        {
+            if (encoder_keys[e].debounce_count > 0)
+            {
+                encoder_keys[e].debounce_count--;
+            }
+        }
+    }
+#endif
 }
 
 /* ================================================ *\
