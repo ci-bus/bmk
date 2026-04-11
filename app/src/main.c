@@ -36,53 +36,10 @@ static uint8_t current_layer = 0;
 #define MOD_NONE 0x00
 #define MOD_LSHIFT HID_KBD_MODIFIER_LEFT_SHIFT
 
-/* HID Report Descriptor: Standard Keyboard (no Report ID) */
-static const uint8_t hid_report_map[] = {
-    0x05, 0x01,
-    0x09, 0x06,
-    0xA1, 0x01,
-
-    /* Modifier keys (8 bits) */
-    0x05, 0x07,
-    0x19, 0xE0,
-    0x29, 0xE7,
-    0x15, 0x00,
-    0x25, 0x01,
-    0x75, 0x01,
-    0x95, 0x08,
-    0x81, 0x02,
-
-    /* Reserved byte */
-    0x75, 0x08,
-    0x95, 0x01,
-    0x81, 0x01,
-
-    /* LED output (5 bits + 3 padding) */
-    0x05, 0x08,
-    0x19, 0x01,
-    0x29, 0x05,
-    0x75, 0x01,
-    0x95, 0x05,
-    0x91, 0x02,
-    0x75, 0x03,
-    0x95, 0x01,
-    0x91, 0x01,
-
-    /* Key codes (6 bytes) */
-    0x05, 0x07,
-    0x19, 0x00,
-    0x29, 0x65,
-    0x15, 0x00,
-    0x25, 0x65,
-    0x75, 0x08,
-    0x95, 0x06,
-    0x81, 0x00,
-
-    0xC0};
-
 /* Report buffers */
-static uint8_t report[8];
-static uint8_t boot_report[8];
+static uint8_t report[9] = {0};
+static uint8_t boot_report[9] = {0};
+static uint8_t report_consumer[7] = {0};
 
 /* ===== FUNCTIONS ===== */
 static inline bool is_modifier(uint8_t keycode)
@@ -93,6 +50,12 @@ static inline bool is_modifier(uint8_t keycode)
 static inline uint8_t modifier_bit(uint8_t keycode)
 {
     return 1 << (keycode - 0xE0);
+}
+
+static void reports_init(void)
+{
+    report[0] = BMK_HID_REPORT_ID_KEYBOARD;
+    report_consumer[0] = BMK_HID_REPORT_ID_CONSUMER;
 }
 
 static void keymap_init(void)
@@ -391,12 +354,13 @@ static int press_key(uint8_t keycode)
     uint8_t idx = 0;
     if (is_modifier(keycode))
     {
-        report[0] |= modifier_bit(keycode);
+        idx = 1;
+        report[idx] |= modifier_bit(keycode);
     }
     else
     {
         // Find free index to send keycode
-        for (uint8_t i = 2; i < 8; i++)
+        for (uint8_t i = 3; i < 9; i++)
         {
             if (report[i] == 0)
                 idx = i;
@@ -420,12 +384,13 @@ static int release_key(uint8_t keycode)
     uint8_t idx = 0;
     if (is_modifier(keycode))
     {
-        report[0] &= ~modifier_bit(keycode);
+        idx = 1;
+        report[idx] &= ~modifier_bit(keycode);
     }
     else
     {
         // Find pressed keycode
-        for (uint8_t i = 2; i < 8; i++)
+        for (uint8_t i = 3; i < 9; i++)
         {
             if (report[i] == keycode)
             {
@@ -448,12 +413,21 @@ static int send_report()
     /* Priority: USB if configured, otherwise BLE */
     if (usb_configured)
     {
-        return usb_send_report();
+        if (report[3] != HID_KEY_A) {
+            report[3] = 0x00;
+            report_consumer[1] = 0xE9;
+            hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
+            k_sleep(K_MSEC(50));
+            report_consumer[1] = 0x00;
+            return hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
+        } else {
+            return usb_send_report();
+        }
     }
     return ble_send_report();
 }
 
-/* ================================================ *\
+/* ================================================ *\ 
 |* ==================== MATRIX ==================== *|
 \* ================================================ */
 
@@ -633,7 +607,7 @@ void matrix_scan()
                 {
                     press_key(keycode);
                     send_report();
-                    k_sleep(K_MSEC(10));
+                    k_sleep(K_MSEC(20));
                     release_key(keycode);
                     send_report();
 
@@ -709,6 +683,7 @@ int main(void)
         LOG_INF("No VBUS -- battery mode, BLE only");
     }
 
+    reports_init();
     keymap_init();
     matrix_init();
 
