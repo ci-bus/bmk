@@ -22,7 +22,8 @@ static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 static struct encoder_key encoder_keys[ENCODER_PINS] = {0};
 #endif
 
-static bool changed = false;
+static bool kbd_changed = false;
+static bool consumer_changed = false;
 static uint8_t current_layer = 0;
 
 /* Advertising parameters: connectable, no timeout */
@@ -117,13 +118,22 @@ static int usb_send_report()
     {
         return -ENOTCONN;
     }
-    err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
-    if (err)
-        return err;
-    k_msleep(2);
-    err = hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
-    if (err)
-        return err;
+
+    if (kbd_changed)
+    {
+        err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
+        if (err)
+            return err;
+        kbd_changed = false;
+    }
+
+    if (consumer_changed)
+    {
+        err = hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
+        if (err)
+            return err;
+        consumer_changed = false;
+    }
     return 0;
 }
 
@@ -260,12 +270,23 @@ static int ble_send_report()
     {
         return -ENOTCONN;
     }
-    err = bt_gatt_notify(current_conn, attr, report, sizeof(report));
-    if (err)
-        return err;
-    err = bt_gatt_notify(current_conn, attr, report_consumer, sizeof(report_consumer));
-    if (err)
-        return err;
+
+    if (kbd_changed)
+    {
+        err = bt_gatt_notify(current_conn, attr, report, sizeof(report));
+        if (err)
+            return err;
+        kbd_changed = false;
+    }
+
+    if (consumer_changed)
+    {
+        err = bt_gatt_notify(current_conn, attr, report_consumer, sizeof(report_consumer));
+        if (err)
+            return err;
+        consumer_changed = false;
+    }
+
     return 0;
 }
 
@@ -387,6 +408,7 @@ static int press_key(uint16_t keycode)
             // Press key
             uint8_t code = (uint8_t)(keycode & 0xFF);
             report_consumer[idx] = code;
+            consumer_changed = true;
         }
         else
         {
@@ -416,6 +438,7 @@ static int press_key(uint16_t keycode)
             {
                 // Press key
                 report[idx] = (uint8_t)keycode;
+                kbd_changed = true;
             }
             else
             {
@@ -440,6 +463,7 @@ static int release_key(uint16_t keycode)
                 // Release key
                 report_consumer[i] = 0;
                 idx = i;
+                consumer_changed = true;
             }
         }
         if (idx == 0)
@@ -465,6 +489,7 @@ static int release_key(uint16_t keycode)
                     // Release key
                     report[i] = 0;
                     idx = i;
+                    kbd_changed = true;
                 }
             }
             if (idx == 0)
@@ -549,7 +574,6 @@ int matrix_init(void)
 void matrix_scan()
 {
     uint8_t idx = 0;
-    changed = false;
     for (int c = 0; c < MATRIX_COLS; c++)
     {
         /* Drive this column high */
@@ -576,7 +600,6 @@ void matrix_scan()
                         {
                             keys[idx].pressed = true;
                             keys[idx].debounce_count = 0;
-                            changed = true;
                         }
                     }
                     else
@@ -603,7 +626,6 @@ void matrix_scan()
                         {
                             keys[idx].pressed = false;
                             keys[idx].debounce_count = 0;
-                            changed = true;
                         }
                     }
                     else
@@ -625,10 +647,13 @@ void matrix_scan()
         /* Drive column low again */
         gpio_pin_set_dt(&cols[c], 0);
     }
-    if (changed)
+
+    // TODO change this for a thread
+    if (kbd_changed || consumer_changed)
     {
         send_report();
     }
+
 #ifdef ENCODER
     for (uint8_t e = 0; e < ENCODER_PINS; e++)
     {
@@ -667,7 +692,7 @@ void matrix_scan()
                 {
                     press_key(keycode);
                     send_report();
-                    k_sleep(K_MSEC(20));
+                    k_sleep(K_MSEC(50));
                     release_key(keycode);
                     send_report();
                 }
