@@ -23,7 +23,7 @@ const struct gpio_dt_spec rows[MATRIX_ROWS] = {
     {.port = GPIO1, .pin = 6, .dt_flags = GPIO_ACTIVE_HIGH},  /* Row 8: P1.06 */
 };
 
-const struct gpio_dt_spec encoder[ENCODER_PINS] = {
-    {.port = GPIO0, .pin = 6, .dt_flags = GPIO_ACTIVE_LOW}, /* Row 0: P0.06 */
-    {.port = GPIO0, .pin = 5, .dt_flags = GPIO_ACTIVE_LOW}, /* Row 1: P0.05 */
+const struct gpio_dt_spec encoders[ENCODERS * ENCODER_PINS] = {
+    {.port = GPIO0, .pin = 6, .dt_flags = GPIO_ACTIVE_LOW}, /* Encoder 0 left: P0.06 */
+    {.port = GPIO0, .pin = 5, .dt_flags = GPIO_ACTIVE_LOW}, /* Encoder 0 right: P0.05 */
 };

@@ -12,7 +12,7 @@
 #endif
 
 #ifndef DEBOUNCE_ENCODER
-#define DEBOUNCE_ENCODER 10
+#define DEBOUNCE_ENCODER 5
 #endif
 
 struct key {
@@ -22,9 +22,11 @@ struct key {
 };
 
 struct encoder_key {
-    uint16_t kc[LAYERS];
+    uint16_t left_kc[LAYERS];
+    uint16_t right_kc[LAYERS];
     uint8_t last_value;
     uint8_t debounce_count;
+    int direction;
 };
 
 #endif
