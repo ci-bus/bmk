@@ -19,7 +19,7 @@ LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 #ifdef ENCODERS
-static struct encoder_key encoder_keys[ENCODERS * ENCODER_PINS] = {0};
+static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
 static bool kbd_changed = false;
@@ -69,11 +69,12 @@ static void keymap_init(void)
         }
     }
 #ifdef ENCODERS
-    for (uint8_t i = 0; i < LAYERS; i++)
+    for (uint8_t l = 0; l < LAYERS; l++)
     {
-        for (uint8_t j = 0; j < ENCODERS * ENCODER_PINS; j++)
+        for (uint8_t e = 0; e < ENCODERS; e++)
         {
-            encoder_keys[j].kc[i] = layers[i][MATRIX_COLS * MATRIX_ROWS + j];
+            encoder_keys[e].left_kc[l] = layers[l][MATRIX_COLS * MATRIX_ROWS + e * ENCODER_PINS];
+            encoder_keys[e].right_kc[l] = layers[l][MATRIX_COLS * MATRIX_ROWS + e * ENCODER_PINS + 1];
         }
     }
 #endif
@@ -655,23 +656,25 @@ void matrix_scan()
     }
 
 #ifdef ENCODERS
-    for (uint8_t e = 0; e < ENCODERS * ENCODER_PINS; e += 2)
+    for (uint8_t e = 0; e < ENCODERS; e += 2)
     {
-        uint8_t a = gpio_pin_get_dt(&encoders[e]);
-        uint8_t b = gpio_pin_get_dt(&encoders[e + 1]);
-        uint8_t current_value = a << 1;
-        current_value |= b;
-        uint8_t last_value = encoder_keys[e].last_value << 1;
-        last_value |= encoder_keys[e + 1].last_value;
-
-        if (current_value == 0b00 && last_value != 0b00)
+        uint8_t left = gpio_pin_get_dt(&encoders[e * ENCODER_PINS]);
+        uint8_t right = gpio_pin_get_dt(&encoders[e * ENCODER_PINS + 1]);
+        uint8_t current_value = left << 1;
+        current_value |= right;
+        uint8_t last_value = encoder_keys[e].last_value;
+        // If encoder is at rest position
+        if (!current_value && last_value)
         {
-            uint8_t idx_direction = encoder_keys[e].step_count > encoder_keys[e + 1].step_count ? e : e + 1;
-            if (encoder_keys[idx_direction].debounce_count > DEBOUNCE_ENCODER)
+            if (encoder_keys[e].debounce_count > DEBOUNCE_ENCODER)
             {
-                encoder_keys[e].last_value = encoder_keys[e].step_count = encoder_keys[e].debounce_count = 0;
-                encoder_keys[e + 1].last_value = encoder_keys[e + 1].step_count = encoder_keys[e + 1].debounce_count = 0;
-                uint16_t keycode = encoder_keys[idx_direction].kc[current_layer];
+                // Get keycode based on direction, negative left, positive right
+                uint16_t keycode = encoder_keys[e].direction < 0 
+                    ? encoder_keys[e].left_kc[current_layer]
+                    : encoder_keys[e].right_kc[current_layer];
+                // Reset values
+                encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
+                // Send keycode
                 press_key(keycode);
                 send_report();
                 k_sleep(K_MSEC(10));
@@ -680,7 +683,7 @@ void matrix_scan()
             }
             else
             {
-                encoder_keys[idx_direction].debounce_count++;
+                encoder_keys[e].debounce_count++;
             }
         }
         else
@@ -695,21 +698,20 @@ void matrix_scan()
                 case 0b1011:
                 case 0b1101:
                 case 0b0100:
-                    encoder_keys[e].step_count++;
+                    encoder_keys[e].direction--;
                     break;
                 // right
                 case 0b0001:
                 case 0b0111:
                 case 0b1110:
                 case 0b1000:
-                    encoder_keys[e + 1].step_count++;
+                    encoder_keys[e].direction++;
                     break;
                 default:
                     break;
                 }
             }
-            encoder_keys[e].last_value = a;
-            encoder_keys[e + 1].last_value = b;
+            encoder_keys[e].last_value = current_value;
         }
     }
 #endif

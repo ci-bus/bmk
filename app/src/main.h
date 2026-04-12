@@ -22,10 +22,11 @@ struct key {
 };
 
 struct encoder_key {
-    uint16_t kc[LAYERS];
+    uint16_t left_kc[LAYERS];
+    uint16_t right_kc[LAYERS];
     uint8_t last_value;
     uint8_t debounce_count;
-    uint16_t step_count;
+    int direction;
 };
 
 #endif
