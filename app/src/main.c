@@ -18,8 +18,8 @@
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
-#ifdef ENCODER
-static struct encoder_key encoder_keys[ENCODER_PINS] = {0};
+#ifdef ENCODERS
+static struct encoder_key encoder_keys[ENCODERS * ENCODER_PINS] = {0};
 #endif
 
 static bool kbd_changed = false;
@@ -68,10 +68,10 @@ static void keymap_init(void)
             keys[j].kc[i] = layers[i][j];
         }
     }
-#ifdef ENCODER
+#ifdef ENCODERS
     for (uint8_t i = 0; i < LAYERS; i++)
     {
-        for (uint8_t j = 0; j < ENCODER_PINS; j++)
+        for (uint8_t j = 0; j < ENCODERS * ENCODER_PINS; j++)
         {
             encoder_keys[j].kc[i] = layers[i][MATRIX_COLS * MATRIX_ROWS + j];
         }
@@ -550,15 +550,15 @@ int matrix_init(void)
         }
     }
 
-#ifdef ENCODER
-    for (int e = 0; e < ENCODER_PINS; e++)
+#ifdef ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
     {
-        if (!gpio_is_ready_dt(&encoder[e]))
+        if (!gpio_is_ready_dt(&encoders[e]))
         {
             LOG_ERR("Encoder pin %d GPIO not ready", e);
             return -ENODEV;
         }
-        err = gpio_pin_configure_dt(&encoder[e], GPIO_INPUT | GPIO_PULL_UP);
+        err = gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
         if (err)
         {
             LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
@@ -654,60 +654,62 @@ void matrix_scan()
         send_report();
     }
 
-#ifdef ENCODER
-    for (uint8_t e = 0; e < ENCODER_PINS; e++)
+#ifdef ENCODERS
+    for (uint8_t e = 0; e < ENCODERS * ENCODER_PINS; e += 2)
     {
-        uint8_t value = gpio_pin_get_dt(&encoder[e]);
-        if (value != encoder_keys[e].last_value)
+        uint8_t a = gpio_pin_get_dt(&encoders[e]);
+        uint8_t b = gpio_pin_get_dt(&encoders[e + 1]);
+        uint8_t current_value = a << 1;
+        current_value |= b;
+        uint8_t last_value = encoder_keys[e].last_value << 1;
+        last_value |= encoder_keys[e + 1].last_value;
+
+        if (current_value == 0b00 && last_value != 0b00)
         {
-            if (encoder_keys[e].debounce_count > DEBOUNCE_ENCODER)
+            uint8_t idx_direction = encoder_keys[e].step_count > encoder_keys[e + 1].step_count ? e : e + 1;
+            if (encoder_keys[idx_direction].debounce_count > DEBOUNCE_ENCODER)
             {
-                uint8_t current_value = gpio_pin_get_dt(&encoder[0]) << 1;
-                current_value |= gpio_pin_get_dt(&encoder[1]);
-                uint8_t last_value = encoder_keys[0].last_value << 1;
-                last_value |= encoder_keys[1].last_value;
-                uint16_t keycode = 0;
-                switch ((last_value << 2) | current_value)
-                {
-                // sentido antihorario
-                case 0b0010:
-                case 0b0100:
-                case 0b1101:
-                case 0b1011:
-                    keycode = encoder_keys[0].kc[current_layer];
-                    break;
-                // sentido horario
-                case 0b0001:
-                case 0b0111:
-                case 0b1110:
-                case 0b1000:
-                    keycode = encoder_keys[1].kc[current_layer];
-                    break;
-                default:
-                    break;
-                }
-                encoder_keys[e].last_value = value;
-                encoder_keys[e].debounce_count = 0;
-                if (keycode)
-                {
-                    press_key(keycode);
-                    send_report();
-                    k_sleep(K_MSEC(50));
-                    release_key(keycode);
-                    send_report();
-                }
+                encoder_keys[e].last_value = encoder_keys[e].step_count = encoder_keys[e].debounce_count = 0;
+                encoder_keys[e + 1].last_value = encoder_keys[e + 1].step_count = encoder_keys[e + 1].debounce_count = 0;
+                uint16_t keycode = encoder_keys[idx_direction].kc[current_layer];
+                press_key(keycode);
+                send_report();
+                k_sleep(K_MSEC(10));
+                release_key(keycode);
+                send_report();
             }
             else
             {
-                encoder_keys[e].debounce_count++;
+                encoder_keys[idx_direction].debounce_count++;
             }
         }
         else
         {
-            if (encoder_keys[e].debounce_count > 0)
+
+            if (current_value != last_value)
             {
-                encoder_keys[e].debounce_count--;
+                switch ((last_value << 2) | current_value)
+                {
+                // left
+                case 0b0010:
+                case 0b1011:
+                case 0b1101:
+                case 0b0100:
+                    encoder_keys[e].step_count++;
+                    break;
+                // right
+                case 0b0001:
+                case 0b0111:
+                case 0b1110:
+                case 0b1000:
+                    encoder_keys[e + 1].step_count++;
+                    break;
+                default:
+                    break;
+                }
             }
+            encoder_keys[e].last_value = a;
+            encoder_keys[e + 1].last_value = b;
         }
     }
 #endif

@@ -1,7 +1,7 @@
 #include "keyboard.h"
 
 /* Layers keycodes */
-const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODER_PINS] = {
+const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS] = {
     {
         // Col 0     Col 1         Col 2      Col 3      Col 4      Col 5      Col 6      Col 7
         HID_KEY_ESC, HID_KEY_NONE, HID_KEY_2, HID_KEY_4, HID_KEY_6, HID_KEY_8, HID_KEY_0, HID_KEY_EQUAL,                                                                                      // Row 0

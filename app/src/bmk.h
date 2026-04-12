@@ -16,7 +16,7 @@
 
 extern const struct gpio_dt_spec cols[];
 extern const struct gpio_dt_spec rows[];
-extern const struct gpio_dt_spec encoder[ENCODER_PINS];
+extern const struct gpio_dt_spec encoders[ENCODER_PINS];
 
 #define GPIO0 DEVICE_DT_GET(DT_NODELABEL(gpio0))
 #define GPIO1 DEVICE_DT_GET(DT_NODELABEL(gpio1))
