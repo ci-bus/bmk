@@ -42,12 +42,12 @@ static uint8_t boot_report[9] = {0};
 static uint8_t report_consumer[7] = {0};
 
 /* ===== FUNCTIONS ===== */
-static inline bool is_modifier(uint8_t keycode)
+static inline bool is_modifier(uint16_t keycode)
 {
     return keycode >= 0xE0 && keycode <= 0xE7;
 }
 
-static inline uint8_t modifier_bit(uint8_t keycode)
+static inline uint8_t modifier_bit(uint16_t keycode)
 {
     return 1 << (keycode - 0xE0);
 }
@@ -64,7 +64,7 @@ static void keymap_init(void)
     {
         for (uint8_t j = 0; j < MATRIX_COLS * MATRIX_ROWS; j++)
         {
-            keys[j].kc[i] = (uint8_t)layers[i][j];
+            keys[j].kc[i] = layers[i][j];
         }
     }
 #ifdef ENCODER
@@ -72,7 +72,7 @@ static void keymap_init(void)
     {
         for (uint8_t j = 0; j < ENCODER_PINS; j++)
         {
-            encoder_keys[j].kc[i] = (uint8_t)layers[i][MATRIX_COLS * MATRIX_ROWS + j];
+            encoder_keys[j].kc[i] = layers[i][MATRIX_COLS * MATRIX_ROWS + j];
         }
     }
 #endif
@@ -118,7 +118,13 @@ static int usb_send_report()
         return -ENOTCONN;
     }
     err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
-    return err;
+    if (err)
+        return err;
+    k_msleep(2);
+    err = hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
+    if (err)
+        return err;
+    return 0;
 }
 
 /* ==================== BLE HID ==================== */
@@ -204,29 +210,30 @@ static ssize_t write_ctrl_point(struct bt_conn *conn, const struct bt_gatt_attr 
  * [6]  Report char value (Report Protocol notify)
  * [10] Boot KB Input char value (Boot Protocol notify)
  */
-BT_GATT_SERVICE_DEFINE(hid_svc,
-                       BT_GATT_PRIMARY_SERVICE(BT_UUID_HIDS),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_INFO, BT_GATT_CHRC_READ,
-                                              BT_GATT_PERM_READ, read_hid_info, NULL, NULL),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT_MAP, BT_GATT_CHRC_READ,
-                                              BT_GATT_PERM_READ, read_report_map, NULL, NULL),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT,
-                                              BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-                                              BT_GATT_PERM_READ, read_report, NULL, NULL),
-                       BT_GATT_CCC(report_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-                       BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ,
-                                          read_report_ref, NULL, NULL),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_BOOT_KB_IN_REPORT,
-                                              BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-                                              BT_GATT_PERM_READ, read_boot_report, NULL, NULL),
-                       BT_GATT_CCC(boot_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_PROTOCOL_MODE,
-                                              BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-                                              BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-                                              read_protocol_mode, write_protocol_mode, NULL),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT,
-                                              BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-                                              BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL), );
+BT_GATT_SERVICE_DEFINE(
+    hid_svc,
+    BT_GATT_PRIMARY_SERVICE(BT_UUID_HIDS),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_INFO, BT_GATT_CHRC_READ,
+                           BT_GATT_PERM_READ, read_hid_info, NULL, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT_MAP, BT_GATT_CHRC_READ,
+                           BT_GATT_PERM_READ, read_report_map, NULL, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_READ, read_report, NULL, NULL),
+    BT_GATT_CCC(report_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+    BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ,
+                       read_report_ref, NULL, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_BOOT_KB_IN_REPORT,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_READ, read_boot_report, NULL, NULL),
+    BT_GATT_CCC(boot_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_PROTOCOL_MODE,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+                           BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+                           read_protocol_mode, write_protocol_mode, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT,
+                           BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+                           BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL));
 
 static int ble_send_report()
 {
@@ -253,30 +260,42 @@ static int ble_send_report()
     {
         return -ENOTCONN;
     }
-    err = bt_gatt_notify(current_conn, attr, report, 8);
-    return err;
+    err = bt_gatt_notify(current_conn, attr, report, sizeof(report));
+    if (err)
+        return err;
+    err = bt_gatt_notify(current_conn, attr, report_consumer, sizeof(report_consumer));
+    if (err)
+        return err;
+    return 0;
 }
 
 /* ==================== Connection Management ==================== */
 
 static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA_BYTES(BT_DATA_UUID16_ALL,
-                  BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
-                  BT_UUID_16_ENCODE(BT_UUID_DIS_VAL),
-                  BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
+    BT_DATA_BYTES(
+        BT_DATA_UUID16_ALL,
+        BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_DIS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
     BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
-            sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+    BT_DATA(
+        BT_DATA_NAME_COMPLETE,
+        CONFIG_BT_DEVICE_NAME,
+        sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
 static void start_advertising(void)
 {
-    int err = bt_le_adv_start(BT_LE_ADV_CONN_FOREVER, ad, ARRAY_SIZE(ad),
-                              sd, ARRAY_SIZE(sd));
+    int err = bt_le_adv_start(
+        BT_LE_ADV_CONN_FOREVER,
+        ad,
+        ARRAY_SIZE(ad),
+        sd,
+        ARRAY_SIZE(sd));
     if (err && err != -EALREADY)
     {
         LOG_ERR("Advertising failed (err %d)", err);
@@ -349,26 +368,25 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 
 /* ==================== Key functions ==================== */
 
-static int press_key(uint8_t keycode)
+static int press_key(uint16_t keycode)
 {
     uint8_t idx = 0;
-    if (is_modifier(keycode))
-    {
-        idx = 1;
-        report[idx] |= modifier_bit(keycode);
-    }
-    else
+    if ((keycode & 0xF000) == K_CONSUMER)
     {
         // Find free index to send keycode
-        for (uint8_t i = 3; i < 9; i++)
+        for (uint8_t i = 1; i < 7; i++)
         {
-            if (report[i] == 0)
+            if (report_consumer[i] == 0)
+            {
                 idx = i;
+                break;
+            }
         }
         if (idx != 0)
         {
             // Press key
-            report[idx] = keycode;
+            uint8_t code = (uint8_t)(keycode & 0xFF);
+            report_consumer[idx] = code;
         }
         else
         {
@@ -376,26 +394,51 @@ static int press_key(uint8_t keycode)
             return -1;
         }
     }
+    else
+    {
+        if (is_modifier(keycode))
+        {
+            idx = 1;
+            report[idx] |= modifier_bit(keycode);
+        }
+        else
+        {
+            // Find free index to send keycode
+            for (uint8_t i = 3; i < 9; i++)
+            {
+                if (report[i] == 0)
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx != 0)
+            {
+                // Press key
+                report[idx] = (uint8_t)keycode;
+            }
+            else
+            {
+                // No free index
+                return -1;
+            }
+        }
+    }
     return idx;
 }
 
-static int release_key(uint8_t keycode)
+static int release_key(uint16_t keycode)
 {
     uint8_t idx = 0;
-    if (is_modifier(keycode))
-    {
-        idx = 1;
-        report[idx] &= ~modifier_bit(keycode);
-    }
-    else
+    if ((keycode & 0xF000) == K_CONSUMER)
     {
         // Find pressed keycode
-        for (uint8_t i = 3; i < 9; i++)
+        for (uint8_t i = 1; i < 7; i++)
         {
-            if (report[i] == keycode)
+            if (report_consumer[i] == (uint8_t)(keycode & 0xFF))
             {
                 // Release key
-                report[i] = 0;
+                report_consumer[i] = 0;
                 idx = i;
             }
         }
@@ -403,6 +446,32 @@ static int release_key(uint8_t keycode)
         {
             // Key is not pressed
             return -1;
+        }
+    }
+    else
+    {
+        if (is_modifier(keycode))
+        {
+            idx = 1;
+            report[idx] &= ~modifier_bit(keycode);
+        }
+        else
+        {
+            // Find pressed keycode
+            for (uint8_t i = 3; i < 9; i++)
+            {
+                if (report[i] == keycode)
+                {
+                    // Release key
+                    report[i] = 0;
+                    idx = i;
+                }
+            }
+            if (idx == 0)
+            {
+                // Key is not pressed
+                return -1;
+            }
         }
     }
     return idx;
@@ -413,21 +482,12 @@ static int send_report()
     /* Priority: USB if configured, otherwise BLE */
     if (usb_configured)
     {
-        if (report[3] != HID_KEY_A) {
-            report[3] = 0x00;
-            report_consumer[1] = 0xE9;
-            hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
-            k_sleep(K_MSEC(50));
-            report_consumer[1] = 0x00;
-            return hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
-        } else {
-            return usb_send_report();
-        }
+        return usb_send_report();
     }
     return ble_send_report();
 }
 
-/* ================================================ *\ 
+/* ================================================ *\
 |* ==================== MATRIX ==================== *|
 \* ================================================ */
 
@@ -610,7 +670,6 @@ void matrix_scan()
                     k_sleep(K_MSEC(20));
                     release_key(keycode);
                     send_report();
-
                 }
             }
             else

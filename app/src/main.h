@@ -16,13 +16,13 @@
 #endif
 
 struct key {
-    uint8_t kc[LAYERS];
+    uint16_t kc[LAYERS];
     bool pressed;
     uint8_t debounce_count;
 };
 
 struct encoder_key {
-    uint8_t kc[LAYERS];
+    uint16_t kc[LAYERS];
     uint8_t last_value;
     uint8_t debounce_count;
 };
