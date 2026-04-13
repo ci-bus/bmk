@@ -25,6 +25,7 @@ static struct encoder_key encoder_keys[ENCODERS] = {0};
 static bool kbd_changed = false;
 static bool consumer_changed = false;
 static uint8_t current_layer = 0;
+static uint8_t last_layer = 0;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
@@ -390,35 +391,21 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 
 /* ==================== Key functions ==================== */
 
+static int release_all()
+{
+    memset(report, 0, sizeof(report));
+    memset(report_consumer, 0, sizeof(report_consumer));
+    reports_init();
+    kbd_changed = consumer_changed = true;
+    return 0;
+}
+
 static int press_key(uint16_t keycode)
 {
     uint8_t idx = 0;
-    if ((keycode & 0xF000) == K_CONSUMER)
+    switch (keycode & 0xF000)
     {
-        // Find free index to send keycode
-        for (uint8_t i = 1; i < 7; i++)
-        {
-            if (report_consumer[i] == 0)
-            {
-                idx = i;
-                break;
-            }
-        }
-        if (idx != 0)
-        {
-            // Press key
-            uint8_t code = (uint8_t)(keycode & 0xFF);
-            report_consumer[idx] = code;
-            consumer_changed = true;
-        }
-        else
-        {
-            // No free index
-            return -1;
-        }
-    }
-    else
-    {
+    case K_KEYBOARD:
         if (is_modifier(keycode))
         {
             idx = 1;
@@ -447,6 +434,44 @@ static int press_key(uint16_t keycode)
                 return -1;
             }
         }
+        break;
+    case K_CONSUMER:
+        // Find free index to send keycode
+        for (uint8_t i = 1; i < 7; i++)
+        {
+            if (report_consumer[i] == 0)
+            {
+                idx = i;
+                break;
+            }
+        }
+        if (idx != 0)
+        {
+            // Press key
+            uint8_t code = (uint8_t)(keycode & 0xFF);
+            report_consumer[idx] = code;
+            consumer_changed = true;
+        }
+        else
+        {
+            // No free index
+            return -1;
+        }
+        break;
+    case K_FN:
+        uint8_t layer = keycode & 0xFF;
+        switch ((keycode >> 8) & 0x0F)
+        {
+        case 1: // MO
+            if (layer != current_layer && layer < LAYERS)
+            {
+                last_layer = current_layer;
+                current_layer = layer;
+                return release_all();
+            }
+            break;
+        }
+        break;
     }
     return idx;
 }
@@ -454,27 +479,9 @@ static int press_key(uint16_t keycode)
 static int release_key(uint16_t keycode)
 {
     uint8_t idx = 0;
-    if ((keycode & 0xF000) == K_CONSUMER)
+    switch (keycode & 0xF000)
     {
-        // Find pressed keycode
-        for (uint8_t i = 1; i < 7; i++)
-        {
-            if (report_consumer[i] == (uint8_t)(keycode & 0xFF))
-            {
-                // Release key
-                report_consumer[i] = 0;
-                idx = i;
-                consumer_changed = true;
-            }
-        }
-        if (idx == 0)
-        {
-            // Key is not pressed
-            return -1;
-        }
-    }
-    else
-    {
+    case K_KEYBOARD:
         if (is_modifier(keycode))
         {
             idx = 1;
@@ -498,6 +505,45 @@ static int release_key(uint16_t keycode)
                 // Key is not pressed
                 return -1;
             }
+        }
+        break;
+    case K_CONSUMER:
+        // Find pressed keycode
+        for (uint8_t i = 1; i < 7; i++)
+        {
+            if (report_consumer[i] == (uint8_t)(keycode & 0xFF))
+            {
+                // Release key
+                report_consumer[i] = 0;
+                idx = i;
+                consumer_changed = true;
+            }
+        }
+        if (idx == 0)
+        {
+            // Key is not pressed
+            return -1;
+        }
+        break;
+    case K_FN:
+        uint8_t layer = keycode & 0xFF;
+        switch ((keycode >> 8) & 0x0F)
+        {
+        case 1: // MO
+            if (layer == current_layer)
+            {
+                current_layer = last_layer;
+                last_layer = layer;
+                return release_all();
+            }
+            break;
+        case 2: // TO
+            if (layer < LAYERS)
+            {
+                current_layer = layer;
+            }
+            return release_all();
+            break;
         }
     }
     return idx;
@@ -595,8 +641,13 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > DEBOUNCE_PRESS)
                     {
-                        release_key(keys[idx].kc[current_layer]); // Hold key down once
-                        int res = press_key(keys[idx].kc[current_layer]);
+                        uint8_t layer = current_layer;
+                        while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
+                        {
+                            layer--;
+                        }
+                        release_key(keys[idx].kc[layer]); // Hold key down once
+                        int res = press_key(keys[idx].kc[layer]);
                         if (res != -1)
                         {
                             keys[idx].pressed = true;
@@ -622,7 +673,12 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > DEBOUNCE_RELEASE)
                     {
-                        int res = release_key(keys[idx].kc[current_layer]);
+                        uint8_t layer = current_layer;
+                        while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
+                        {
+                            layer--;
+                        }
+                        int res = release_key(keys[idx].kc[layer]);
                         if (res != -1)
                         {
                             keys[idx].pressed = false;
@@ -642,7 +698,6 @@ void matrix_scan()
                     }
                 }
             }
-            // TODO set pressed or released key with debounce logic
         }
 
         /* Drive column low again */
@@ -669,9 +724,25 @@ void matrix_scan()
             if (encoder_keys[e].debounce_count > DEBOUNCE_ENCODER)
             {
                 // Get keycode based on direction, negative left, positive right
-                uint16_t keycode = encoder_keys[e].direction < 0 
-                    ? encoder_keys[e].left_kc[current_layer]
-                    : encoder_keys[e].right_kc[current_layer];
+                uint16_t keycode = 0;
+                if (encoder_keys[e].direction < 0)
+                {
+                    uint8_t layer = current_layer;
+                    while (layer > 0 && encoder_keys[e].left_kc[layer] == HID_KEY_TRANS)
+                    {
+                        layer--;
+                    }
+                    keycode = encoder_keys[e].left_kc[layer];
+                }
+                else
+                {
+                    uint8_t layer = current_layer;
+                    while (layer > 0 && encoder_keys[e].right_kc[layer] == HID_KEY_TRANS)
+                    {
+                        layer--;
+                    }
+                    keycode = encoder_keys[e].right_kc[layer];
+                }
                 // Reset values
                 encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
                 // Send keycode

@@ -5,7 +5,10 @@
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
 
+#define K_KEYBOARD 0x0000
 #define K_CONSUMER 0x1000
+#define K_FN 0x2000
+#define K_SPECIAL 0x3000
 
 #define HID_KEY_NONE 0
 #define HID_KEY_NUBS 0x64
@@ -18,6 +21,8 @@
 #define HID_KEY_STOP (K_CONSUMER | 0xB7)
 #define HID_KEY_EJECT (K_CONSUMER | 0xB8)
 #define HID_KEY_SLEEP (K_CONSUMER | 0x32)
+
+#define HID_KEY_TRANS (K_SPECIAL | 0x01)
 
 #define BMK_HID_REPORT_ID_KEYBOARD 0x01
 #define BMK_HID_REPORT_ID_LEDS 0x01
@@ -32,6 +37,9 @@
 #define HID_USAGE_LED_NUM_LOCK (0x01)
 #define HID_USAGE_LED_KANA (0x05)
 #define HID_USAGE_CONSUMER_CONSUMER_CONTROL (0x01)
+
+#define FN_MO(layer) (0x2100 | (layer & 0xFF))
+#define FN_TO(layer) (0x2200 | (layer & 0xFF))
 
 #define BMK_HID_MAIN_VAL_DATA (0x00 << 0)
 #define BMK_HID_MAIN_VAL_VAR (0x01 << 1)
