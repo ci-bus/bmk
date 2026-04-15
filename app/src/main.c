@@ -17,6 +17,11 @@
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
+K_SEM_DEFINE(send_thread_sem, 0, 1);
+K_THREAD_STACK_DEFINE(send_thread_area, SEND_THREAD_STACK_SIZE);
+struct k_thread send_thread_data;
+static struct thread_report reports_to_send[SEND_THREAD_CACHE_SIZE] = {0};
+
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 #ifdef ENCODERS
 static struct encoder_key encoder_keys[ENCODERS] = {0};
@@ -113,28 +118,24 @@ static const struct hid_ops usb_ops = {
     .int_in_ready = usb_int_in_ready,
 };
 
-static int usb_send_report()
+static int usb_send_report(uint8_t idx_cache)
 {
     int err;
     if (!usb_configured)
     {
         return -ENOTCONN;
     }
-
-    if (kbd_changed)
+    if (reports_to_send[idx_cache].type == BMK_KEYBOARD)
     {
-        err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
+        err = hid_int_ep_write(usb_hid_dev, reports_to_send[idx_cache].report, sizeof(reports_to_send[idx_cache].report), NULL);
         if (err)
             return err;
-        kbd_changed = false;
     }
-
-    if (consumer_changed)
+    else if (reports_to_send[idx_cache].type == BMK_CONSUMER)
     {
-        err = hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
+        err = hid_int_ep_write(usb_hid_dev, reports_to_send[idx_cache].report_consumer, sizeof(reports_to_send[idx_cache].report_consumer), NULL);
         if (err)
             return err;
-        consumer_changed = false;
     }
     return 0;
 }
@@ -247,7 +248,7 @@ BT_GATT_SERVICE_DEFINE(
                            BT_GATT_CHRC_WRITE_WITHOUT_RESP,
                            BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL));
 
-static int ble_send_report()
+static int ble_send_report(uint8_t idx_cache)
 {
     int err;
     uint8_t *buf;
@@ -272,23 +273,18 @@ static int ble_send_report()
     {
         return -ENOTCONN;
     }
-
-    if (kbd_changed)
+    if (reports_to_send[idx_cache].type == BMK_KEYBOARD)
     {
-        err = bt_gatt_notify(current_conn, attr, report, sizeof(report));
+        err = bt_gatt_notify(current_conn, attr, reports_to_send[idx_cache].report, sizeof(reports_to_send[idx_cache].report));
         if (err)
             return err;
-        kbd_changed = false;
     }
-
-    if (consumer_changed)
+    else if (reports_to_send[idx_cache].type == BMK_CONSUMER)
     {
-        err = bt_gatt_notify(current_conn, attr, report_consumer, sizeof(report_consumer));
+        err = bt_gatt_notify(current_conn, attr, reports_to_send[idx_cache].report_consumer, sizeof(reports_to_send[idx_cache].report_consumer));
         if (err)
             return err;
-        consumer_changed = false;
     }
-
     return 0;
 }
 
@@ -549,14 +545,33 @@ static int release_key(uint16_t keycode)
     return idx;
 }
 
-static int send_report()
+static int send_report(uint8_t idx_cache)
 {
-    /* Priority: USB if configured, otherwise BLE */
     if (usb_configured)
     {
-        return usb_send_report();
+        return usb_send_report(idx_cache);
     }
-    return ble_send_report();
+    return ble_send_report(idx_cache);
+}
+
+static int add_report_to_cache(struct thread_report report)
+{
+    // looks for a free slot without disrupting the keystroke sequence
+    //          ↓
+    //[ ][ ][*][ ][ ][ ]...
+    int i = SEND_THREAD_CACHE_SIZE - 2;
+    for (i; i >= 0; i--)
+    {
+        if (reports_to_send[i].ready)
+        {
+            i ++;
+            break;
+        }
+    }
+    if (i != -1) {
+        reports_to_send[0] = report;
+    }
+    return i;
 }
 
 /* ================================================ *\
@@ -789,8 +804,49 @@ void matrix_scan()
 }
 
 /* ================================================ *\
+|* ===================== SEND ===================== *|
+\* ================================================ */
+
+void sender_thread(void *p1, void *p2, void *p3)
+{
+    while (1)
+    {
+        k_sem_take(&send_thread_sem, K_FOREVER);
+        for (uint8_t i = 0; i < SEND_THREAD_CACHE_SIZE; i++)
+        {
+            if (reports_to_send[i].ready)
+            {
+                int err = 0;
+                err = send_report(i);
+                if (err)
+                {
+                    // Retry a few times if sending fails, with small delay to avoid spamming
+                    i--;
+                    k_sleep(K_MSEC(1));
+                }
+                else
+                {
+                    reports_to_send[i].ready = false;
+                }
+            }
+        }
+    }
+}
+
+/* ================================================ *\
 |* ===================== MAIN ===================== *|
 \* ================================================ */
+
+int init_threads()
+{
+    k_tid_t tid = k_thread_create(
+        &send_thread_data, send_thread_area,
+        K_THREAD_STACK_SIZEOF(send_thread_area),
+        sender_thread,
+        NULL, NULL, NULL,
+        0, 0, K_NO_WAIT);
+    return 0;
+}
 
 int main(void)
 {
