@@ -4,6 +4,7 @@
  * Priority: USB when connected, BLE otherwise
  */
 
+#include <zephyr/types.h>
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -17,13 +18,18 @@
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
+K_THREAD_STACK_DEFINE(send_thread_area, SEND_THREAD_STACK_SIZE);
+struct k_thread send_thread_data;
+
+K_MSGQ_DEFINE(report_msgq, sizeof(thread_report_t), SEND_THREAD_CACHE_SIZE, 4);
+
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 #ifdef ENCODERS
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
-static bool kbd_changed = false;
-static bool consumer_changed = false;
+static uint8_t debounce_p, debounce_r, debounce_e;
+
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 
@@ -52,6 +58,13 @@ static inline bool is_modifier(uint16_t keycode)
 static inline uint8_t modifier_bit(uint16_t keycode)
 {
     return 1 << (keycode - 0xE0);
+}
+
+static void debounce_init(void)
+{
+    debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
 }
 
 static void reports_init(void)
@@ -113,30 +126,29 @@ static const struct hid_ops usb_ops = {
     .int_in_ready = usb_int_in_ready,
 };
 
-static int usb_send_report()
+static int usb_send_report(const thread_report_t *report)
 {
     int err;
+
     if (!usb_configured)
     {
         return -ENOTCONN;
     }
 
-    if (kbd_changed)
+    if (report->type == BMK_KEYBOARD)
     {
-        err = hid_int_ep_write(usb_hid_dev, report, sizeof(report), NULL);
-        if (err)
-            return err;
-        kbd_changed = false;
+        err = hid_int_ep_write(usb_hid_dev, report->report, 9, NULL);
+    }
+    else if (report->type == BMK_CONSUMER)
+    {
+        err = hid_int_ep_write(usb_hid_dev, report->report_consumer, 7, NULL);
+    }
+    else 
+    {
+        return -EINVAL;
     }
 
-    if (consumer_changed)
-    {
-        err = hid_int_ep_write(usb_hid_dev, report_consumer, sizeof(report_consumer), NULL);
-        if (err)
-            return err;
-        consumer_changed = false;
-    }
-    return 0;
+    return err;
 }
 
 /* ==================== BLE HID ==================== */
@@ -247,7 +259,7 @@ BT_GATT_SERVICE_DEFINE(
                            BT_GATT_CHRC_WRITE_WITHOUT_RESP,
                            BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL));
 
-static int ble_send_report()
+static int ble_send_report(thread_report_t *report)
 {
     int err;
     uint8_t *buf;
@@ -265,31 +277,36 @@ static int ble_send_report()
     }
     else if (ble_notify_enabled)
     {
-        buf = report;
         attr = &hid_svc.attrs[6];
     }
     else
     {
         return -ENOTCONN;
     }
-
-    if (kbd_changed)
+    if (report->type == BMK_KEYBOARD)
     {
-        err = bt_gatt_notify(current_conn, attr, report, sizeof(report));
+        buf = report->report;
+        err = bt_gatt_notify(current_conn, attr, buf, 9);
         if (err)
             return err;
-        kbd_changed = false;
     }
-
-    if (consumer_changed)
+    else if (report->type == BMK_CONSUMER)
     {
-        err = bt_gatt_notify(current_conn, attr, report_consumer, sizeof(report_consumer));
+        buf = report->report_consumer;
+        err = bt_gatt_notify(current_conn, attr, buf, 7);
         if (err)
             return err;
-        consumer_changed = false;
     }
-
     return 0;
+}
+
+static int send_report(thread_report_t *report)
+{
+    if (usb_configured)
+    {
+        return usb_send_report(report);
+    }
+    return ble_send_report(report);
 }
 
 /* ==================== Connection Management ==================== */
@@ -391,13 +408,36 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 
 /* ==================== Key functions ==================== */
 
+static bool add_report_to_send(bmk_report_type_t type)
+{
+    thread_report_t th_report = {
+        .type = type,
+        .report = {0},
+        .report_consumer = {0}
+
+    };
+    if (type == BMK_KEYBOARD)
+    {
+        memcpy(th_report.report, report, sizeof(report));
+    }
+    else if (type == BMK_CONSUMER)
+    {
+        memcpy(th_report.report_consumer, report_consumer, sizeof(report_consumer));
+    }
+    int ret = k_msgq_put(&report_msgq, &th_report, K_NO_WAIT);
+    //int ret = send_report(&th_report);
+    return (ret == 0);
+}
+
 static int release_all()
 {
     memset(report, 0, sizeof(report));
     memset(report_consumer, 0, sizeof(report_consumer));
     reports_init();
-    kbd_changed = consumer_changed = true;
-    return 0;
+    add_report_to_send(BMK_KEYBOARD);
+    add_report_to_send(BMK_CONSUMER);
+
+    return 1;
 }
 
 static int press_key(uint16_t keycode)
@@ -410,6 +450,7 @@ static int press_key(uint16_t keycode)
         {
             idx = 1;
             report[idx] |= modifier_bit(keycode);
+            add_report_to_send(BMK_KEYBOARD);
         }
         else
         {
@@ -426,7 +467,7 @@ static int press_key(uint16_t keycode)
             {
                 // Press key
                 report[idx] = (uint8_t)keycode;
-                kbd_changed = true;
+                add_report_to_send(BMK_KEYBOARD);
             }
             else
             {
@@ -450,7 +491,7 @@ static int press_key(uint16_t keycode)
             // Press key
             uint8_t code = (uint8_t)(keycode & 0xFF);
             report_consumer[idx] = code;
-            consumer_changed = true;
+            add_report_to_send(BMK_CONSUMER);
         }
         else
         {
@@ -497,7 +538,7 @@ static int release_key(uint16_t keycode)
                     // Release key
                     report[i] = 0;
                     idx = i;
-                    kbd_changed = true;
+                    add_report_to_send(BMK_KEYBOARD);
                 }
             }
             if (idx == 0)
@@ -516,7 +557,7 @@ static int release_key(uint16_t keycode)
                 // Release key
                 report_consumer[i] = 0;
                 idx = i;
-                consumer_changed = true;
+                add_report_to_send(BMK_CONSUMER);
             }
         }
         if (idx == 0)
@@ -547,16 +588,6 @@ static int release_key(uint16_t keycode)
         }
     }
     return idx;
-}
-
-static int send_report()
-{
-    /* Priority: USB if configured, otherwise BLE */
-    if (usb_configured)
-    {
-        return usb_send_report();
-    }
-    return ble_send_report();
 }
 
 /* ================================================ *\
@@ -639,7 +670,7 @@ void matrix_scan()
             {
                 if (!keys[idx].pressed)
                 {
-                    if (keys[idx].debounce_count > DEBOUNCE_PRESS)
+                    if (keys[idx].debounce_count > debounce_p)
                     {
                         uint8_t layer = current_layer;
                         while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
@@ -671,7 +702,7 @@ void matrix_scan()
             {
                 if (keys[idx].pressed)
                 {
-                    if (keys[idx].debounce_count > DEBOUNCE_RELEASE)
+                    if (keys[idx].debounce_count > debounce_r)
                     {
                         uint8_t layer = current_layer;
                         while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
@@ -704,12 +735,6 @@ void matrix_scan()
         gpio_pin_set_dt(&cols[c], 0);
     }
 
-    // TODO change this for a thread
-    if (kbd_changed || consumer_changed)
-    {
-        send_report();
-    }
-
 #ifdef ENCODERS
     for (uint8_t e = 0; e < ENCODERS; e += 2)
     {
@@ -721,7 +746,7 @@ void matrix_scan()
         // If encoder is at rest position
         if (!current_value && last_value)
         {
-            if (encoder_keys[e].debounce_count > DEBOUNCE_ENCODER)
+            if (encoder_keys[e].debounce_count > debounce_e)
             {
                 // Get keycode based on direction, negative left, positive right
                 uint16_t keycode = 0;
@@ -747,10 +772,7 @@ void matrix_scan()
                 encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
                 // Send keycode
                 press_key(keycode);
-                send_report();
-                k_sleep(K_MSEC(10));
                 release_key(keycode);
-                send_report();
             }
             else
             {
@@ -789,8 +811,48 @@ void matrix_scan()
 }
 
 /* ================================================ *\
+|* ===================== SEND ===================== *|
+\* ================================================ */
+
+void sender_thread(void *p1, void *p2, void *p3)
+{
+    thread_report_t report_temp;
+    int err;
+
+    while (1)
+    {
+        k_msgq_get(&report_msgq, &report_temp, K_FOREVER);
+
+        bool sent = false;
+        uint8_t retries = 0;
+
+        while (!sent && retries < 100) {
+            err = send_report(&report_temp); 
+            
+            if (err == 0) {
+                sent = true;
+            } else {
+                retries++;
+                k_sleep(K_MSEC(5));
+            }
+        }
+    }
+}
+
+/* ================================================ *\
 |* ===================== MAIN ===================== *|
 \* ================================================ */
+
+k_tid_t init_threads()
+{
+    k_tid_t tid = k_thread_create(
+        &send_thread_data, send_thread_area,
+        K_THREAD_STACK_SIZEOF(send_thread_area),
+        sender_thread,
+        NULL, NULL, NULL,
+        K_PRIO_COOP(SEND_THREAD_PRIORITY), 0, K_NO_WAIT);
+    return tid;
+}
 
 int main(void)
 {
@@ -842,14 +904,18 @@ int main(void)
         LOG_INF("No VBUS -- battery mode, BLE only");
     }
 
+    debounce_init();
     reports_init();
     keymap_init();
     matrix_init();
+    init_threads();
+
+    uint16_t cycle_delay = CYCLE_DELAY;
 
     while (1)
     {
         matrix_scan();
-        k_sleep(K_MSEC(1));
+        k_usleep(cycle_delay);
     }
 
     return 0;
