@@ -6,6 +6,7 @@
 
 #include <zephyr/types.h>
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
@@ -28,8 +29,12 @@ static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
-static uint8_t debounce_p, debounce_r, debounce_e;
+K_SEM_DEFINE(wakeup_sem, 0, 1);
+static struct gpio_callback cb_p0;
+static struct gpio_callback cb_p1;
+static uint32_t last_activity = 0;
 
+static uint8_t debounce_p, debounce_r, debounce_e;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 
@@ -810,6 +815,70 @@ void matrix_scan()
 #endif
 }
 
+/* =============================================== *\
+|* ==================== SLEEP ==================== *|
+\* =============================================== */
+
+void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins) {
+    k_sem_give(&wakeup_sem);
+}
+
+void sleep_init(void) {
+    // Obtenemos los dispositivos de los dos puertos
+    const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
+
+    // Configuramos el callback para el Puerto 0 (P0.00 a P0.31)
+    gpio_init_callback(&cb_p0, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio0_dev, &cb_p0);
+
+    // Configuramos el callback para el Puerto 1 (P1.00 a P1.15)
+    // El puerto 1 solo tiene 16 pines, pero 0xFFFFFFFF no le hace daño
+    gpio_init_callback(&cb_p1, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio1_dev, &cb_p1);
+}
+
+void matrix_sleep(void)
+{
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 1);
+    }
+
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
+    }
+
+#ifdef ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
+    }
+#endif
+}
+
+int matrix_wakeup(void)
+{
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 0);
+    }
+
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
+    }
+
+#ifdef ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
+    }
+#endif
+    return matrix_init();
+}
+
 /* ================================================ *\
 |* ===================== SEND ===================== *|
 \* ================================================ */
@@ -836,6 +905,7 @@ void sender_thread(void *p1, void *p2, void *p3)
                 k_sleep(K_MSEC(5));
             }
         }
+        last_activity = k_uptime_get_32();
     }
 }
 
@@ -843,7 +913,7 @@ void sender_thread(void *p1, void *p2, void *p3)
 |* ===================== MAIN ===================== *|
 \* ================================================ */
 
-k_tid_t init_threads()
+k_tid_t threads_init()
 {
     k_tid_t tid = k_thread_create(
         &send_thread_data, send_thread_area,
@@ -907,15 +977,19 @@ int main(void)
     debounce_init();
     reports_init();
     keymap_init();
+    sleep_init();
     matrix_init();
-    init_threads();
-
-    uint16_t cycle_delay = CYCLE_DELAY;
+    threads_init();
 
     while (1)
     {
+        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT) {
+            matrix_sleep();
+            k_sem_take(&wakeup_sem, K_FOREVER);
+            matrix_wakeup();
+        }
         matrix_scan();
-        k_usleep(cycle_delay);
+        k_usleep(CYCLE_DELAY);
     }
 
     return 0;
