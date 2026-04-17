@@ -148,7 +148,7 @@ static int usb_send_report(const thread_report_t *report)
     {
         err = hid_int_ep_write(usb_hid_dev, report->report_consumer, 7, NULL);
     }
-    else 
+    else
     {
         return -EINVAL;
     }
@@ -430,7 +430,7 @@ static bool add_report_to_send(bmk_report_type_t type)
         memcpy(th_report.report_consumer, report_consumer, sizeof(report_consumer));
     }
     int ret = k_msgq_put(&report_msgq, &th_report, K_NO_WAIT);
-    //int ret = send_report(&th_report);
+    last_activity = k_uptime_get_32();
     return (ret == 0);
 }
 
@@ -522,7 +522,7 @@ static int press_key(uint16_t keycode)
     return idx;
 }
 
-static int release_key(uint16_t keycode)
+static int release_key(uint16_t keycode, bool send)
 {
     uint8_t idx = 0;
     switch (keycode & 0xF000)
@@ -543,7 +543,10 @@ static int release_key(uint16_t keycode)
                     // Release key
                     report[i] = 0;
                     idx = i;
-                    add_report_to_send(BMK_KEYBOARD);
+                    if (send)
+                    {
+                        add_report_to_send(BMK_KEYBOARD);
+                    }
                 }
             }
             if (idx == 0)
@@ -562,7 +565,10 @@ static int release_key(uint16_t keycode)
                 // Release key
                 report_consumer[i] = 0;
                 idx = i;
-                add_report_to_send(BMK_CONSUMER);
+                if (send)
+                {
+                    add_report_to_send(BMK_CONSUMER);
+                }
             }
         }
         if (idx == 0)
@@ -682,7 +688,7 @@ void matrix_scan()
                         {
                             layer--;
                         }
-                        release_key(keys[idx].kc[layer]); // Hold key down once
+                        release_key(keys[idx].kc[layer], false); // Hold key down once
                         int res = press_key(keys[idx].kc[layer]);
                         if (res != -1)
                         {
@@ -714,7 +720,7 @@ void matrix_scan()
                         {
                             layer--;
                         }
-                        int res = release_key(keys[idx].kc[layer]);
+                        int res = release_key(keys[idx].kc[layer], true);
                         if (res != -1)
                         {
                             keys[idx].pressed = false;
@@ -777,7 +783,7 @@ void matrix_scan()
                 encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
                 // Send keycode
                 press_key(keycode);
-                release_key(keycode);
+                release_key(keycode, true);
             }
             else
             {
@@ -819,11 +825,13 @@ void matrix_scan()
 |* ==================== SLEEP ==================== *|
 \* =============================================== */
 
-void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins) {
+void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins)
+{
     k_sem_give(&wakeup_sem);
 }
 
-void sleep_init(void) {
+void sleep_init(void)
+{
     // Obtenemos los dispositivos de los dos puertos
     const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
     const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
@@ -840,43 +848,51 @@ void sleep_init(void) {
 
 void matrix_sleep(void)
 {
-    for (int c = 0; c < MATRIX_COLS; c++)
-    {
-        gpio_pin_set_dt(&cols[c], 1);
-    }
-
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
-        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
     }
 
 #ifdef ENCODERS
     for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
     {
-        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
+        if (gpio_pin_get_dt(&encoders[e]))
+        {
+            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_RISING);
+        }
+        else
+        {
+            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_FALLING);
+        }
     }
 #endif
-}
 
-int matrix_wakeup(void)
-{
     for (int c = 0; c < MATRIX_COLS; c++)
     {
-        gpio_pin_set_dt(&cols[c], 0);
+        gpio_pin_set_dt(&cols[c], 1);
     }
+}
 
+void matrix_wakeup(void)
+{
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
         gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
     }
 
 #ifdef ENCODERS
     for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
     {
         gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
     }
 #endif
-    return matrix_init();
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 0);
+    }
 }
 
 /* ================================================ *\
@@ -895,17 +911,20 @@ void sender_thread(void *p1, void *p2, void *p3)
         bool sent = false;
         uint8_t retries = 0;
 
-        while (!sent && retries < 100) {
-            err = send_report(&report_temp); 
-            
-            if (err == 0) {
+        while (!sent && retries < 200)
+        {
+            err = send_report(&report_temp);
+
+            if (err == 0)
+            {
                 sent = true;
-            } else {
+            }
+            else
+            {
                 retries++;
                 k_sleep(K_MSEC(5));
             }
         }
-        last_activity = k_uptime_get_32();
     }
 }
 
@@ -983,10 +1002,14 @@ int main(void)
 
     while (1)
     {
-        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT) {
+        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT)
+        {
             matrix_sleep();
+            while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
+                ;
             k_sem_take(&wakeup_sem, K_FOREVER);
             matrix_wakeup();
+            last_activity = k_uptime_get_32();
         }
         matrix_scan();
         k_usleep(CYCLE_DELAY);
