@@ -63,14 +63,14 @@ table tr:hover { background: #16213e; }
 <h2 style="max-width:1200px;margin:30px auto 10px;color:#e94560;">Modifier Constants</h2>
 <table>
 <tr><th>Key</th><th>Zephyr Constant</th><th>Bit</th><th>HID Keycode (for keymap)</th></tr>
-<tr><td>Left Ctrl</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_CTRL</td><td>0x01</td><td>0xE0</td></tr>
-<tr><td>Left Shift</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_SHIFT</td><td>0x02</td><td>0xE1</td></tr>
-<tr><td>Left Alt</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_ALT</td><td>0x04</td><td>0xE2</td></tr>
-<tr><td>Left GUI</td><td class="mod-table">HID_KBD_MODIFIER_LEFT_UI</td><td>0x08</td><td>0xE3</td></tr>
-<tr><td>Right Ctrl</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_CTRL</td><td>0x10</td><td>0xE4</td></tr>
-<tr><td>Right Shift</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_SHIFT</td><td>0x20</td><td>0xE5</td></tr>
-<tr><td>Right Alt</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_ALT</td><td>0x40</td><td>0xE6</td></tr>
-<tr><td>Right GUI</td><td class="mod-table">HID_KBD_MODIFIER_RIGHT_UI</td><td>0x80</td><td>0xE7</td></tr>
+<tr><td>Left Ctrl</td><td class="mod-table">HID_KEY_LCTRL</td><td>0x01</td><td>0xE0</td></tr>
+<tr><td>Left Shift</td><td class="mod-table">HID_KEY_LSHIFT</td><td>0x02</td><td>0xE1</td></tr>
+<tr><td>Left Alt</td><td class="mod-table">HID_KEY_LALT</td><td>0x04</td><td>0xE2</td></tr>
+<tr><td>Left GUI</td><td class="mod-table">HID_KEY_LGUI</td><td>0x08</td><td>0xE3</td></tr>
+<tr><td>Right Ctrl</td><td class="mod-table">HID_KEY_RCTRL</td><td>0x10</td><td>0xE4</td></tr>
+<tr><td>Right Shift</td><td class="mod-table">HID_KEY_RSHIFT</td><td>0x20</td><td>0xE5</td></tr>
+<tr><td>Right Alt</td><td class="mod-table">HID_KEY_RALT</td><td>0x40</td><td>0xE6</td></tr>
+<tr><td>Right GUI</td><td class="mod-table">HID_KEY_RGUI</td><td>0x80</td><td>0xE7</td></tr>
 </table>
 
 <script>
@@ -126,11 +126,11 @@ const keys = [
   ],
   // Row 4: Shift row
   [
-    {l:"Shift",z:"0xE1",c:0xE1,w:2.25,mod:"HID_KBD_MODIFIER_LEFT_SHIFT"},
+    {l:"Shift",z:"0xE1",c:0xE1,w:2.25,mod:"HID_KEY_LSHIFT"},
     {l:"Z",z:"HID_KEY_Z",c:0x1D},{l:"X",z:"HID_KEY_X",c:0x1B},{l:"C",z:"HID_KEY_C",c:0x06},{l:"V",z:"HID_KEY_V",c:0x19},
     {l:"B",z:"HID_KEY_B",c:0x05},{l:"N",z:"HID_KEY_N",c:0x11},{l:"M",z:"HID_KEY_M",c:0x10},
     {l:",\n<",z:"HID_KEY_COMMA",c:0x36},{l:".\n>",z:"HID_KEY_DOT",c:0x37},{l:"/\n?",z:"HID_KEY_SLASH",c:0x38},
-    {l:"Shift",z:"0xE5",c:0xE5,w:2.75,mod:"HID_KBD_MODIFIER_RIGHT_SHIFT"},
+    {l:"Shift",z:"0xE5",c:0xE5,w:2.75,mod:"HID_KEY_RSHIFT"},
     {s:1.25},
     {l:"\u2191",z:"HID_KEY_UP",c:0x52},
     {s:1.25},
@@ -139,14 +139,14 @@ const keys = [
   ],
   // Row 5: Bottom row
   [
-    {l:"Ctrl",z:"0xE0",c:0xE0,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_CTRL"},
-    {l:"GUI",z:"0xE3",c:0xE3,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_UI"},
-    {l:"Alt",z:"0xE2",c:0xE2,w:1.25,mod:"HID_KBD_MODIFIER_LEFT_ALT"},
+    {l:"Ctrl",z:"0xE0",c:0xE0,w:1.25,mod:"HID_KEY_LCTRL"},
+    {l:"GUI",z:"0xE3",c:0xE3,w:1.25,mod:"HID_KEY_LGUI"},
+    {l:"Alt",z:"0xE2",c:0xE2,w:1.25,mod:"HID_KEY_LALT"},
     {l:"Space",z:"HID_KEY_SPACE",c:0x2C,w:6.25},
-    {l:"Alt",z:"0xE6",c:0xE6,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_ALT"},
-    {l:"GUI",z:"0xE7",c:0xE7,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_UI"},
+    {l:"Alt",z:"0xE6",c:0xE6,w:1.25,mod:"HID_KEY_RALT"},
+    {l:"GUI",z:"0xE7",c:0xE7,w:1.25,mod:"HID_KEY_RGUI"},
     {l:"Menu",z:"HID_KEY_COMPOSE",c:0x65,w:1.25},
-    {l:"Ctrl",z:"0xE4",c:0xE4,w:1.25,mod:"HID_KBD_MODIFIER_RIGHT_CTRL"},
+    {l:"Ctrl",z:"0xE4",c:0xE4,w:1.25,mod:"HID_KEY_RCTRL"},
     {s:0.25},
     {l:"\u2190",z:"HID_KEY_LEFT",c:0x50},{l:"\u2193",z:"HID_KEY_DOWN",c:0x51},{l:"\u2192",z:"HID_KEY_RIGHT",c:0x4F},
     {s:0.25},

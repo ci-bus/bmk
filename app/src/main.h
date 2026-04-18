@@ -22,10 +22,22 @@
 #ifndef SLEEP_TIMEOUT
 #define SLEEP_TIMEOUT 5000
 #endif
+#ifndef TAP_HOLD_DELAY
+#define TAP_HOLD_DELAY 200
+#endif
+#ifndef TAP_HOLD_SIZE_ARRAY
+#define TAP_HOLD_SIZE_ARRAY 3
+#endif
+
+typedef enum {
+    RELEASED = 0,
+    PRESSED = 1,
+    HELD = 2,
+} bmk_key_status_t;
 
 struct key {
     uint16_t kc[LAYERS];
-    bool pressed;
+    bmk_key_status_t status;
     uint8_t debounce_count;
 };
 
@@ -47,3 +59,8 @@ typedef struct {
     uint8_t report[9];
     uint8_t report_consumer[7];
 } thread_report_t;
+
+typedef struct {
+    uint8_t idx;
+    uint8_t layer;
+} held_mod_key_t;
