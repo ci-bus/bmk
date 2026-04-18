@@ -37,6 +37,8 @@ static uint32_t last_activity = 0;
 static uint8_t debounce_p, debounce_r, debounce_e, delay_tap_hold;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
+static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
+static bool held_mod_keys = false;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
@@ -57,12 +59,12 @@ static uint8_t report_consumer[7] = {0};
 /* ===== FUNCTIONS ===== */
 static inline bool is_modifier(uint16_t keycode)
 {
-    return (keycode >> 8) >= 0xE0 && (keycode >> 8) <= 0xE7;
+    return keycode >= 0xE0 && keycode <= 0xE7;
 }
 
 static inline uint8_t modifier_bit(uint16_t keycode)
 {
-    return 1 << (((uint8_t)(keycode >> 8)) - 0xE0);
+    return 1 << (((uint8_t)(keycode & 0xFF)) - 0xE0);
 }
 
 static void debounce_init(void)
@@ -414,6 +416,50 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 
 /* ==================== Key functions ==================== */
 
+static void add_held_mod_keys(uint8_t idx)
+{
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx == 0)
+        {
+            held_mod_keys[i].idx = idx;
+            held_mod_keys[i].layer = current_layer;
+        }
+    }
+    held_mod_keys = true;
+}
+
+static void remove_held_mod_keys(uint8_t idx)
+{
+    held_mod_keys = false;
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx == idx)
+        {
+            held_mod_keys[i] = (held_mod_key_t){0};
+        }
+        else if (held_mod_keys[i].idx != 0)
+        {
+            held_mod_keys = true;
+        }
+    }
+}
+
+static void held_mod_keys_to_report(void)
+{
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx != 0)
+        {
+            uint16_t keycode = (uint16_t)(keys[held_mod_keys[i].idx].kc[held_mod_keys[i].layer] >> 8);
+            report[1] |= modifier_bit(keycode);
+            keys[held_mod_keys[i].idx].status = PRESSED;
+            held_mod_keys[i] = (held_mod_key_t){0};
+        }
+    }
+    held_mod_keys = false;
+}
+
 static bool add_report_to_send(bmk_report_type_t type)
 {
     thread_report_t th_report = {
@@ -471,6 +517,11 @@ static int press_key(uint16_t keycode)
             }
             if (idx != 0)
             {
+                // Tap hold keys
+                if (held_mod_keys)
+                {
+                    held_mod_keys_to_report();
+                }
                 // Press key
                 report[idx] = (uint8_t)keycode;
                 add_report_to_send(BMK_KEYBOARD);
@@ -695,18 +746,20 @@ void matrix_scan()
                     if (keys[idx].debounce_count > debounce_p)
                     {
                         // Tap hold keys
-                        if ((uint8_t)(keycode >> 12) == 0x0E)
+                        if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
                             // Use debounce_count to know when do hold key
                             if (keys[idx].debounce_count > delay_tap_hold)
                             {
                                 keycode = (uint16_t)(keycode >> 8);
+                                remove_held_mod_keys(idx);
                             }
                             else
                             {
-                                if (keys[idx].status != TAPPED)
+                                if (keys[idx].status != HELD)
                                 {
-                                    keys[idx].status = TAPPED;
+                                    keys[idx].status = HELD;
+                                    add_held_mod_keys(idx);
                                 }
                                 keys[idx].debounce_count++;
                                 continue;
@@ -741,7 +794,7 @@ void matrix_scan()
                     if (keys[idx].debounce_count > debounce_r)
                     {
                         // Tap hold keys
-                        if ((uint8_t)(keycode >> 12) == 0x0E)
+                        if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
                             keycode = (uint16_t)(keycode >> 8);
                         }
@@ -757,7 +810,7 @@ void matrix_scan()
                         keys[idx].debounce_count++;
                     }
                 }
-                else if (keys[idx].status == TAPPED) // Tap hold keys
+                else if (keys[idx].status == HELD) // Tap hold keys
                 {
                     if (keys[idx].debounce_count > debounce_r)
                     {
@@ -766,17 +819,15 @@ void matrix_scan()
                     }
                     else if (keys[idx].debounce_count == debounce_r)
                     {
+                        remove_held_mod_keys(idx);
                         // Do tap key (press and release)
-                        uint8_t keycode = (uint8_t)(keycode & 0xFF);
+                        keycode = (uint16_t)(keycode & 0xFF);
                         int res = press_key(keycode);
                         if (res != -1)
                         {
-                            int res = release_key(keycode, true);
-                            if (res != -1)
-                            {
-                                keys[idx].status = RELEASED;
-                                keys[idx].debounce_count = 0;
-                            }
+                            release_key(keycode, true);
+                            keys[idx].status = RELEASED;
+                            keys[idx].debounce_count = 0;
                         }
                     }
                     else
