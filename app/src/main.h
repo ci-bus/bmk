@@ -19,6 +19,9 @@
 #ifndef CYCLE_DELAY
 #define CYCLE_DELAY CYCLE_BASE_DELAY
 #endif
+#ifndef SLEEP_TIMEOUT
+#define SLEEP_TIMEOUT 5000
+#endif
 
 struct key {
     uint16_t kc[LAYERS];

@@ -6,6 +6,7 @@
 
 #include <zephyr/types.h>
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
@@ -28,8 +29,12 @@ static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
-static uint8_t debounce_p, debounce_r, debounce_e;
+K_SEM_DEFINE(wakeup_sem, 0, 1);
+static struct gpio_callback cb_p0;
+static struct gpio_callback cb_p1;
+static uint32_t last_activity = 0;
 
+static uint8_t debounce_p, debounce_r, debounce_e;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 
@@ -143,7 +148,7 @@ static int usb_send_report(const thread_report_t *report)
     {
         err = hid_int_ep_write(usb_hid_dev, report->report_consumer, 7, NULL);
     }
-    else 
+    else
     {
         return -EINVAL;
     }
@@ -425,7 +430,7 @@ static bool add_report_to_send(bmk_report_type_t type)
         memcpy(th_report.report_consumer, report_consumer, sizeof(report_consumer));
     }
     int ret = k_msgq_put(&report_msgq, &th_report, K_NO_WAIT);
-    //int ret = send_report(&th_report);
+    last_activity = k_uptime_get_32();
     return (ret == 0);
 }
 
@@ -517,7 +522,7 @@ static int press_key(uint16_t keycode)
     return idx;
 }
 
-static int release_key(uint16_t keycode)
+static int release_key(uint16_t keycode, bool send)
 {
     uint8_t idx = 0;
     switch (keycode & 0xF000)
@@ -538,7 +543,10 @@ static int release_key(uint16_t keycode)
                     // Release key
                     report[i] = 0;
                     idx = i;
-                    add_report_to_send(BMK_KEYBOARD);
+                    if (send)
+                    {
+                        add_report_to_send(BMK_KEYBOARD);
+                    }
                 }
             }
             if (idx == 0)
@@ -557,7 +565,10 @@ static int release_key(uint16_t keycode)
                 // Release key
                 report_consumer[i] = 0;
                 idx = i;
-                add_report_to_send(BMK_CONSUMER);
+                if (send)
+                {
+                    add_report_to_send(BMK_CONSUMER);
+                }
             }
         }
         if (idx == 0)
@@ -677,7 +688,7 @@ void matrix_scan()
                         {
                             layer--;
                         }
-                        release_key(keys[idx].kc[layer]); // Hold key down once
+                        release_key(keys[idx].kc[layer], false); // Hold key down once
                         int res = press_key(keys[idx].kc[layer]);
                         if (res != -1)
                         {
@@ -709,7 +720,7 @@ void matrix_scan()
                         {
                             layer--;
                         }
-                        int res = release_key(keys[idx].kc[layer]);
+                        int res = release_key(keys[idx].kc[layer], true);
                         if (res != -1)
                         {
                             keys[idx].pressed = false;
@@ -772,7 +783,7 @@ void matrix_scan()
                 encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
                 // Send keycode
                 press_key(keycode);
-                release_key(keycode);
+                release_key(keycode, true);
             }
             else
             {
@@ -810,6 +821,80 @@ void matrix_scan()
 #endif
 }
 
+/* =============================================== *\
+|* ==================== SLEEP ==================== *|
+\* =============================================== */
+
+void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins)
+{
+    k_sem_give(&wakeup_sem);
+}
+
+void sleep_init(void)
+{
+    // Obtenemos los dispositivos de los dos puertos
+    const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
+
+    // Configuramos el callback para el Puerto 0 (P0.00 a P0.31)
+    gpio_init_callback(&cb_p0, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio0_dev, &cb_p0);
+
+    // Configuramos el callback para el Puerto 1 (P1.00 a P1.15)
+    // El puerto 1 solo tiene 16 pines, pero 0xFFFFFFFF no le hace daño
+    gpio_init_callback(&cb_p1, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio1_dev, &cb_p1);
+}
+
+void matrix_sleep(void)
+{
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
+    }
+
+#ifdef ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        if (gpio_pin_get_dt(&encoders[e]))
+        {
+            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_RISING);
+        }
+        else
+        {
+            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_FALLING);
+        }
+    }
+#endif
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 1);
+    }
+}
+
+void matrix_wakeup(void)
+{
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
+    }
+
+#ifdef ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
+    }
+#endif
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 0);
+    }
+}
+
 /* ================================================ *\
 |* ===================== SEND ===================== *|
 \* ================================================ */
@@ -826,12 +911,16 @@ void sender_thread(void *p1, void *p2, void *p3)
         bool sent = false;
         uint8_t retries = 0;
 
-        while (!sent && retries < 100) {
-            err = send_report(&report_temp); 
-            
-            if (err == 0) {
+        while (!sent && retries < 200)
+        {
+            err = send_report(&report_temp);
+
+            if (err == 0)
+            {
                 sent = true;
-            } else {
+            }
+            else
+            {
                 retries++;
                 k_sleep(K_MSEC(5));
             }
@@ -843,7 +932,7 @@ void sender_thread(void *p1, void *p2, void *p3)
 |* ===================== MAIN ===================== *|
 \* ================================================ */
 
-k_tid_t init_threads()
+k_tid_t threads_init()
 {
     k_tid_t tid = k_thread_create(
         &send_thread_data, send_thread_area,
@@ -907,15 +996,23 @@ int main(void)
     debounce_init();
     reports_init();
     keymap_init();
+    sleep_init();
     matrix_init();
-    init_threads();
-
-    uint16_t cycle_delay = CYCLE_DELAY;
+    threads_init();
 
     while (1)
     {
+        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT)
+        {
+            matrix_sleep();
+            while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
+                ;
+            k_sem_take(&wakeup_sem, K_FOREVER);
+            matrix_wakeup();
+            last_activity = k_uptime_get_32();
+        }
         matrix_scan();
-        k_usleep(cycle_delay);
+        k_usleep(CYCLE_DELAY);
     }
 
     return 0;
