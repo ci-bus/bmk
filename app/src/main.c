@@ -34,7 +34,7 @@ static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
 static uint32_t last_activity = 0;
 
-static uint8_t debounce_p, debounce_r, debounce_e;
+static uint8_t debounce_p, debounce_r, debounce_e, delay_tap_hold;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 
@@ -57,12 +57,12 @@ static uint8_t report_consumer[7] = {0};
 /* ===== FUNCTIONS ===== */
 static inline bool is_modifier(uint16_t keycode)
 {
-    return keycode >= 0xE0 && keycode <= 0xE7;
+    return (keycode >> 8) >= 0xE0 && (keycode >> 8) <= 0xE7;
 }
 
 static inline uint8_t modifier_bit(uint16_t keycode)
 {
-    return 1 << (keycode - 0xE0);
+    return 1 << (((uint8_t)(keycode >> 8)) - 0xE0);
 }
 
 static void debounce_init(void)
@@ -70,6 +70,7 @@ static void debounce_init(void)
     debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    delay_tap_hold = TAP_HOLD_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
 }
 
 static void reports_init(void)
@@ -532,6 +533,7 @@ static int release_key(uint16_t keycode, bool send)
         {
             idx = 1;
             report[idx] &= ~modifier_bit(keycode);
+            add_report_to_send(BMK_KEYBOARD);
         }
         else
         {
@@ -677,22 +679,45 @@ void matrix_scan()
             idx = r * MATRIX_COLS + c;
             if (!keys[idx].kc[current_layer])
                 continue;
+            // Trans keys logic
+            uint8_t layer = current_layer;
+            while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
+            {
+                layer--;
+            }
+            // Gey keycode
+            uint16_t keycode = keys[idx].kc[layer];
+            // If row is high
             if (gpio_pin_get_dt(&rows[r]))
             {
-                if (!keys[idx].pressed)
+                if (keys[idx].status != PRESSED)
                 {
                     if (keys[idx].debounce_count > debounce_p)
                     {
-                        uint8_t layer = current_layer;
-                        while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
+                        // Tap hold keys
+                        if ((uint8_t)(keycode >> 12) == 0x0E)
                         {
-                            layer--;
+                            // Use debounce_count to know when do hold key
+                            if (keys[idx].debounce_count > delay_tap_hold)
+                            {
+                                keycode = (uint16_t)(keycode >> 8);
+                            }
+                            else
+                            {
+                                if (keys[idx].status != TAPPED)
+                                {
+                                    keys[idx].status = TAPPED;
+                                }
+                                keys[idx].debounce_count++;
+                                continue;
+                            }
                         }
-                        release_key(keys[idx].kc[layer], false); // Hold key down once
-                        int res = press_key(keys[idx].kc[layer]);
+                        // Press key without duplicates
+                        release_key(keycode, false);
+                        int res = press_key(keycode);
                         if (res != -1)
                         {
-                            keys[idx].pressed = true;
+                            keys[idx].status = PRESSED;
                             keys[idx].debounce_count = 0;
                         }
                     }
@@ -703,7 +728,7 @@ void matrix_scan()
                 }
                 else
                 {
-                    if (keys[idx].debounce_count > 0)
+                    if (keys[idx].debounce_count != 0)
                     {
                         keys[idx].debounce_count--;
                     }
@@ -711,20 +736,47 @@ void matrix_scan()
             }
             else
             {
-                if (keys[idx].pressed)
+                if (keys[idx].status == PRESSED)
                 {
                     if (keys[idx].debounce_count > debounce_r)
                     {
-                        uint8_t layer = current_layer;
-                        while (layer > 0 && keys[idx].kc[layer] == HID_KEY_TRANS)
+                        // Tap hold keys
+                        if ((uint8_t)(keycode >> 12) == 0x0E)
                         {
-                            layer--;
+                            keycode = (uint16_t)(keycode >> 8);
                         }
-                        int res = release_key(keys[idx].kc[layer], true);
+                        int res = release_key(keycode, true);
                         if (res != -1)
                         {
-                            keys[idx].pressed = false;
+                            keys[idx].status = RELEASED;
                             keys[idx].debounce_count = 0;
+                        }
+                    }
+                    else
+                    {
+                        keys[idx].debounce_count++;
+                    }
+                }
+                else if (keys[idx].status == TAPPED) // Tap hold keys
+                {
+                    if (keys[idx].debounce_count > debounce_r)
+                    {
+                        keys[idx].debounce_count = 0;
+                        continue;
+                    }
+                    else if (keys[idx].debounce_count == debounce_r)
+                    {
+                        // Do tap key (press and release)
+                        uint8_t keycode = (uint8_t)(keycode & 0xFF);
+                        int res = press_key(keycode);
+                        if (res != -1)
+                        {
+                            int res = release_key(keycode, true);
+                            if (res != -1)
+                            {
+                                keys[idx].status = RELEASED;
+                                keys[idx].debounce_count = 0;
+                            }
                         }
                     }
                     else
@@ -734,7 +786,7 @@ void matrix_scan()
                 }
                 else
                 {
-                    if (keys[idx].debounce_count > 0)
+                    if (keys[idx].debounce_count != 0)
                     {
                         keys[idx].debounce_count--;
                     }

@@ -22,10 +22,19 @@
 #ifndef SLEEP_TIMEOUT
 #define SLEEP_TIMEOUT 5000
 #endif
+#ifndef TAP_HOLD_DELAY
+#define TAP_HOLD_DELAY 200
+#endif
+
+typedef enum {
+    RELEASED = 0,
+    PRESSED = 1,
+    TAPPED = 2
+} bmk_key_status_t;
 
 struct key {
     uint16_t kc[LAYERS];
-    bool pressed;
+    bmk_key_status_t status;
     uint8_t debounce_count;
 };
 

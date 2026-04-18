@@ -10,6 +10,15 @@
 #define K_FN 0x2000
 #define K_SPECIAL 0x3000
 
+#define HID_KEY_LCTRL (K_KEYBOARD | 0xE0)
+#define HID_KEY_LSHIFT (K_KEYBOARD | 0xE1)
+#define HID_KEY_LALT (K_KEYBOARD | 0xE2)
+#define HID_KEY_LGUI (K_KEYBOARD | 0xE3)
+#define HID_KEY_RCTRL (K_KEYBOARD | 0xE4)
+#define HID_KEY_RSHIFT (K_KEYBOARD | 0xE5)
+#define HID_KEY_RALT (K_KEYBOARD | 0xE6)
+#define HID_KEY_RGUI (K_KEYBOARD | 0xE7)
+
 #define HID_KEY_NONE 0
 #define HID_KEY_NUBS 0x64
 #define HID_KEY_VOLUME_UP (K_CONSUMER | 0xE9)
@@ -27,7 +36,6 @@
 #define BMK_HID_REPORT_ID_KEYBOARD 0x01
 #define BMK_HID_REPORT_ID_CONSUMER 0x02
 #define BMK_HID_REPORT_ID_LEDS 0x01
-
 
 #define HID_USAGE_GD_KEYBOARD (0x06)
 #define HID_USAGE_KEY (0x07)
@@ -47,6 +55,8 @@
 #define BMK_HID_MAIN_VAL_ABS (0x00 << 2)
 #define BMK_HID_MAIN_VAL_CONST (0x01 << 0)
 #define BMK_HID_MAIN_VAL_ARRAY (0x00 << 1)
+
+#define TAP_HOLD(mod, key) (((mod) << 8) | (key))
 
 static const uint8_t hid_report_map[] = {
   HID_USAGE_PAGE(HID_USAGE_GEN_DESKTOP),
