@@ -25,6 +25,9 @@
 #ifndef TAP_HOLD_DELAY
 #define TAP_HOLD_DELAY 200
 #endif
+#ifndef SECOND_TAP_DELAY
+#define SECOND_TAP_DELAY 25
+#endif
 #ifndef TAP_HOLD_SIZE_ARRAY
 #define TAP_HOLD_SIZE_ARRAY 3
 #endif
@@ -33,6 +36,7 @@ typedef enum {
     RELEASED = 0,
     PRESSED = 1,
     HELD = 2,
+    TAPPED = 3,
 } bmk_key_status_t;
 
 struct key {
@@ -64,3 +68,8 @@ typedef struct {
     uint8_t idx;
     uint8_t layer;
 } held_mod_key_t;
+
+struct timeout_tapped_keys {
+    struct k_work_delayable dwork;
+    uint8_t key_idx;
+};

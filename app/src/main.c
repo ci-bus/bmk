@@ -34,11 +34,12 @@ static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
 static uint32_t last_activity = 0;
 
-static uint8_t debounce_p, debounce_r, debounce_e, delay_tap_hold;
+static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_delay, second_tap_delay;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
-static bool held_mod_keys = false;
+static bool some_held_mod_keys = false;
+static struct timeout_tapped_keys timeout_tapped_keys_data;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
@@ -72,7 +73,9 @@ static void debounce_init(void)
     debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    delay_tap_hold = TAP_HOLD_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    tap_hold_delay = TAP_HOLD_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    second_tap_delay = SECOND_TAP_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+
 }
 
 static void reports_init(void)
@@ -426,12 +429,12 @@ static void add_held_mod_keys(uint8_t idx)
             held_mod_keys[i].layer = current_layer;
         }
     }
-    held_mod_keys = true;
+    some_held_mod_keys = true;
 }
 
 static void remove_held_mod_keys(uint8_t idx)
 {
-    held_mod_keys = false;
+    some_held_mod_keys = false;
     for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
     {
         if (held_mod_keys[i].idx == idx)
@@ -440,7 +443,7 @@ static void remove_held_mod_keys(uint8_t idx)
         }
         else if (held_mod_keys[i].idx != 0)
         {
-            held_mod_keys = true;
+            some_held_mod_keys = true;
         }
     }
 }
@@ -457,7 +460,18 @@ static void held_mod_keys_to_report(void)
             held_mod_keys[i] = (held_mod_key_t){0};
         }
     }
-    held_mod_keys = false;
+    some_held_mod_keys = false;
+}
+
+static void tapped_key_release_delayer(struct k_work *work)
+{
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct timeout_tapped_keys *ctx = CONTAINER_OF(dwork, struct timeout_tapped_keys, dwork);
+    uint8_t idx = ctx->key_idx;
+    if (keys[idx].status == TAPPED)
+    {
+        keys[idx].status = RELEASED;
+    }
 }
 
 static bool add_report_to_send(bmk_report_type_t type)
@@ -518,7 +532,7 @@ static int press_key(uint16_t keycode)
             if (idx != 0)
             {
                 // Tap hold keys
-                if (held_mod_keys)
+                if (some_held_mod_keys)
                 {
                     held_mod_keys_to_report();
                 }
@@ -749,10 +763,23 @@ void matrix_scan()
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
                             // Use debounce_count to know when do hold key
-                            if (keys[idx].debounce_count > delay_tap_hold)
+                            if (keys[idx].debounce_count > tap_hold_delay)
                             {
                                 keycode = (uint16_t)(keycode >> 8);
                                 remove_held_mod_keys(idx);
+                            }
+                            // Second fast tap key
+                            else if (keys[idx].status == TAPPED)
+                            {
+                                if (keys[idx].debounce_count > debounce_p + second_tap_delay)
+                                {
+                                    keycode = (uint16_t)(keycode & 0xFF);
+                                }
+                                else
+                                {
+                                    keys[idx].debounce_count++;
+                                    continue;
+                                }
                             }
                             else
                             {
@@ -796,6 +823,8 @@ void matrix_scan()
                         // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
+                            // TODO improvement this knowing what key is pressed, mod or tapped key.
+                            release_key((uint16_t)(keycode & 0xFF), false);
                             keycode = (uint16_t)(keycode >> 8);
                         }
                         int res = release_key(keycode, true);
@@ -826,8 +855,10 @@ void matrix_scan()
                         if (res != -1)
                         {
                             release_key(keycode, true);
-                            keys[idx].status = RELEASED;
+                            keys[idx].status = TAPPED;
                             keys[idx].debounce_count = 0;
+                            timeout_tapped_keys_data.key_idx = idx;
+                            k_work_reschedule(&timeout_tapped_keys_data.dwork, K_MSEC(TAP_HOLD_DELAY));
                         }
                     }
                     else
@@ -1046,6 +1077,11 @@ k_tid_t threads_init()
     return tid;
 }
 
+void delayed_init(void)
+{
+    k_work_init_delayable(&timeout_tapped_keys_data.dwork, tapped_key_release_delayer);
+}
+
 int main(void)
 {
     int err;
@@ -1102,6 +1138,7 @@ int main(void)
     sleep_init();
     matrix_init();
     threads_init();
+    delayed_init();
 
     while (1)
     {
