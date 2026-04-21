@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Miguelio
+ * Copyright (c) 2026 Miguelio
  * SPDX-License-Identifier: MIT
  *
  * Board: E73-2G4M08S1C (nRF52840)
@@ -42,10 +42,6 @@
 
 &uart0 {
 	status = "disabled";
-};
-
-&spi1 {
-	status = "okay";
 };
 
 zephyr_udc0: &usbd {

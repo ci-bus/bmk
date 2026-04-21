@@ -16,24 +16,35 @@
 #include <zephyr/drivers/led_strip.h>
 #include <hal/nrf_power.h>
 
-void adjust_gpio_voltage(void) {
-    // Si el registro no está ya en 3.3V, lo cambiamos
-    if ((NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) != UICR_REGOUT0_VOUT_3V3) {
-        // Para escribir en UICR se necesita un proceso específico o usar nrfjprog
-        // Pero en runtime puedes verificar si el sistema está operando como esperas
+#include "main.h"
+
+LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
+
+
+
+
+
+#define STRIP_NODE DT_NODELABEL(ws2812)
+#define NUM_LEDS   DT_PROP(STRIP_NODE, chain_length)
+
+static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
+static struct led_rgb pixels[NUM_LEDS];
+
+static void set_color(uint8_t r, uint8_t g, uint8_t b)
+{
+    for (int i = 0; i < NUM_LEDS; i++) {
+        pixels[i].r = r;
+        pixels[i].g = g;
+        pixels[i].b = b;
     }
 }
 
-#include "main.h"
 
 
-#define STRIP_NODE DT_ALIAS(led_strip) // O usa DT_NODELABEL(led_strip)
-#define STRIP_NUM_LEDS 16
-// Definimos un array para guardar los colores de la tira
-static struct led_rgb leds[STRIP_NUM_LEDS];
 
 
-LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
+
+
 
 K_THREAD_STACK_DEFINE(send_thread_area, SEND_THREAD_STACK_SIZE);
 struct k_thread send_thread_data;
@@ -750,6 +761,7 @@ int matrix_init(void)
         LOG_ERR("External power config failed (err %d)", err);
         return err;
     }
+    gpio_pin_set_dt(&power_ext, 1);
 #endif
 
     LOG_INF("Matrix initialized: %d cols x %d rows", MATRIX_COLS, MATRIX_ROWS);
@@ -1106,37 +1118,22 @@ void sender_thread(void *p1, void *p2, void *p3)
     }
 }
 
+static void show_rgb(uint8_t r, uint8_t g, uint8_t b)
+{
+    set_color(r, g, b);
+    led_strip_update_rgb(strip, pixels, NUM_LEDS);
+    k_sleep(K_MSEC(500));
+}
+
 void test_rgb(void)
 {
-    const struct device *strip = DEVICE_DT_GET(DT_NODELABEL(led_strip));
-
     if (!device_is_ready(strip)) {
         return;
     }
 
-    while (1) {
-        // Ejemplo: Poner todos los LEDs en Rojo
-        for (int i = 0; i < STRIP_NUM_LEDS; i++) {
-            leds[i].r = 0xFF; // Rojo a tope
-            leds[i].g = 0x00;
-            leds[i].b = 0x00;
-        }
-
-        // Enviar los datos a la tira física
-        led_strip_update_rgb(strip, leds, STRIP_NUM_LEDS);
-
-        k_msleep(1000);
-
-        // Ejemplo: Apagar
-        for (int i = 0; i < STRIP_NUM_LEDS; i++) {
-            leds[i].r = 0x00;
-            leds[i].g = 0x00;
-            leds[i].b = 0x00;
-        }
-        led_strip_update_rgb(strip, leds, STRIP_NUM_LEDS);
-        
-        k_msleep(1000);
-    }
+    show_rgb(255, 0, 0);
+    show_rgb(0, 255, 0);
+    show_rgb(0, 0, 255);
 }
 
 /* ================================================ *\
@@ -1209,20 +1206,19 @@ int main(void)
         LOG_INF("No VBUS -- battery mode, BLE only");
     }
 
-    adjust_gpio_voltage();
-
     debounce_init();
     reports_init();
     keymap_init();
+
     sleep_init();
     matrix_init();
     threads_init();
     delayed_init();
 
-    test_rgb();
-
     while (1)
     {
+        test_rgb();
+
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT)
         {
             matrix_sleep();
