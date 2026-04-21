@@ -13,9 +13,25 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
+#include <zephyr/drivers/led_strip.h>
 #include <hal/nrf_power.h>
 
+void adjust_gpio_voltage(void) {
+    // Si el registro no está ya en 3.3V, lo cambiamos
+    if ((NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) != UICR_REGOUT0_VOUT_3V3) {
+        // Para escribir en UICR se necesita un proceso específico o usar nrfjprog
+        // Pero en runtime puedes verificar si el sistema está operando como esperas
+    }
+}
+
 #include "main.h"
+
+
+#define STRIP_NODE DT_ALIAS(led_strip) // O usa DT_NODELABEL(led_strip)
+#define STRIP_NUM_LEDS 16
+// Definimos un array para guardar los colores de la tira
+static struct led_rgb leds[STRIP_NUM_LEDS];
+
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
@@ -1090,6 +1106,39 @@ void sender_thread(void *p1, void *p2, void *p3)
     }
 }
 
+void test_rgb(void)
+{
+    const struct device *strip = DEVICE_DT_GET(DT_NODELABEL(led_strip));
+
+    if (!device_is_ready(strip)) {
+        return;
+    }
+
+    while (1) {
+        // Ejemplo: Poner todos los LEDs en Rojo
+        for (int i = 0; i < STRIP_NUM_LEDS; i++) {
+            leds[i].r = 0xFF; // Rojo a tope
+            leds[i].g = 0x00;
+            leds[i].b = 0x00;
+        }
+
+        // Enviar los datos a la tira física
+        led_strip_update_rgb(strip, leds, STRIP_NUM_LEDS);
+
+        k_msleep(1000);
+
+        // Ejemplo: Apagar
+        for (int i = 0; i < STRIP_NUM_LEDS; i++) {
+            leds[i].r = 0x00;
+            leds[i].g = 0x00;
+            leds[i].b = 0x00;
+        }
+        led_strip_update_rgb(strip, leds, STRIP_NUM_LEDS);
+        
+        k_msleep(1000);
+    }
+}
+
 /* ================================================ *\
 |* ===================== MAIN ===================== *|
 \* ================================================ */
@@ -1160,6 +1209,8 @@ int main(void)
         LOG_INF("No VBUS -- battery mode, BLE only");
     }
 
+    adjust_gpio_voltage();
+
     debounce_init();
     reports_init();
     keymap_init();
@@ -1167,6 +1218,8 @@ int main(void)
     matrix_init();
     threads_init();
     delayed_init();
+
+    test_rgb();
 
     while (1)
     {

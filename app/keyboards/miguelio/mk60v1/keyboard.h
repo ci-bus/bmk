@@ -8,6 +8,7 @@
 #define LAYERS 2
 #define ENCODERS 1
 #define POWER_EXT
+#define RGB
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
 
