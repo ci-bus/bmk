@@ -75,7 +75,6 @@ static void debounce_init(void)
     debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
     tap_hold_delay = TAP_HOLD_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
     second_tap_delay = SECOND_TAP_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
-
 }
 
 static void reports_init(void)
@@ -723,6 +722,20 @@ int matrix_init(void)
     }
 #endif
 
+#ifdef POWER_EXT
+    if (!gpio_is_ready_dt(&power_ext))
+    {
+        LOG_ERR("External power GPIO not ready");
+        return -ENODEV;
+    }
+    err = gpio_pin_configure_dt(&power_ext, GPIO_OUTPUT_ACTIVE);
+    if (err)
+    {
+        LOG_ERR("External power config failed (err %d)", err);
+        return err;
+    }
+#endif
+
     LOG_INF("Matrix initialized: %d cols x %d rows", MATRIX_COLS, MATRIX_ROWS);
     return 0;
 }
@@ -759,6 +772,21 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > debounce_p)
                     {
+                        // Special keys
+                        if ((keycode & 0xF000) == K_SPECIAL)
+                        {
+                            switch (keycode)
+                            {
+#ifdef POWER_EXT
+                            case HID_KEY_POWER_ON:
+                                gpio_pin_set_dt(&power_ext, 1);
+                                break;
+                            case HID_KEY_POWER_OFF:
+                                gpio_pin_set_dt(&power_ext, 0);
+                                break;
+#endif
+                            }
+                        }
                         // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {

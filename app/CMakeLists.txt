@@ -14,7 +14,7 @@ target_include_directories(app PRIVATE src)
 target_include_directories(app PRIVATE keyboards/${KEYBOARD})
 
 target_sources(app PRIVATE
-  keyboards/${KEYBOARD}/matrix.c
+  keyboards/${KEYBOARD}/keyboard.c
   keyboards/${KEYBOARD}/keymap.c
   src/main.c
 )

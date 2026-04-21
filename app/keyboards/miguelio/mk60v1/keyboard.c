@@ -27,3 +27,7 @@ const struct gpio_dt_spec encoders[ENCODERS * ENCODER_PINS] = {
     {.port = GPIO0, .pin = 6, .dt_flags = GPIO_ACTIVE_LOW}, /* Encoder 0 left: P0.06 */
     {.port = GPIO0, .pin = 5, .dt_flags = GPIO_ACTIVE_LOW}, /* Encoder 0 right: P0.05 */
 };
+
+const struct gpio_dt_spec power_ext = {
+    .port = GPIO1, .pin = 9, .dt_flags = GPIO_ACTIVE_HIGH
+};
