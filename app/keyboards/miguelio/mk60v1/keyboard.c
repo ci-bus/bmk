@@ -29,5 +29,5 @@ const struct gpio_dt_spec encoders[ENCODERS * ENCODER_PINS] = {
 };
 
 const struct gpio_dt_spec power_ext = {
-    .port = GPIO1, .pin = 9, .dt_flags = GPIO_ACTIVE_HIGH
+    .port = GPIO1, .pin = 9, .dt_flags = GPIO_ACTIVE_HIGH /* External power to rgb underglow */
 };

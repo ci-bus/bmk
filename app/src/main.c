@@ -20,31 +20,21 @@
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
-
-
-
-
 #define STRIP_NODE DT_NODELABEL(ws2812)
-#define NUM_LEDS   DT_PROP(STRIP_NODE, chain_length)
+#define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
 
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[NUM_LEDS];
 
 static void set_color(uint8_t r, uint8_t g, uint8_t b)
 {
-    for (int i = 0; i < NUM_LEDS; i++) {
+    for (int i = 0; i < NUM_LEDS; i++)
+    {
         pixels[i].r = r;
         pixels[i].g = g;
         pixels[i].b = b;
     }
 }
-
-
-
-
-
-
-
 
 K_THREAD_STACK_DEFINE(send_thread_area, SEND_THREAD_STACK_SIZE);
 struct k_thread send_thread_data;
@@ -761,7 +751,6 @@ int matrix_init(void)
         LOG_ERR("External power config failed (err %d)", err);
         return err;
     }
-    gpio_pin_set_dt(&power_ext, 1);
 #endif
 
     LOG_INF("Matrix initialized: %d cols x %d rows", MATRIX_COLS, MATRIX_ROWS);
@@ -1038,6 +1027,10 @@ void sleep_init(void)
 
 void matrix_sleep(void)
 {
+#ifdef POWER_EXT
+    gpio_pin_set_dt(&power_ext, 0);
+#endif
+
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
         gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
@@ -1083,6 +1076,10 @@ void matrix_wakeup(void)
     {
         gpio_pin_set_dt(&cols[c], 0);
     }
+
+#ifdef POWER_EXT
+    gpio_pin_set_dt(&power_ext, 1);
+#endif
 }
 
 /* ================================================ *\
@@ -1122,12 +1119,13 @@ static void show_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
     set_color(r, g, b);
     led_strip_update_rgb(strip, pixels, NUM_LEDS);
-    k_sleep(K_MSEC(500));
+    k_sleep(K_MSEC(200));
 }
 
 void test_rgb(void)
 {
-    if (!device_is_ready(strip)) {
+    if (!device_is_ready(strip))
+    {
         return;
     }
 
@@ -1219,7 +1217,7 @@ int main(void)
     {
         test_rgb();
 
-        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT)
+        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
             matrix_sleep();
             while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)

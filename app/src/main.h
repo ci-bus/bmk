@@ -20,7 +20,7 @@
 #define CYCLE_DELAY CYCLE_BASE_DELAY
 #endif
 #ifndef SLEEP_TIMEOUT
-#define SLEEP_TIMEOUT 5000
+#define SLEEP_TIMEOUT 5
 #endif
 #ifndef TAP_HOLD_DELAY
 #define TAP_HOLD_DELAY 200
