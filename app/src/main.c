@@ -20,21 +20,24 @@
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
 
+#if RGB
 #define STRIP_NODE DT_NODELABEL(ws2812)
 #define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
-
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[NUM_LEDS];
+static uint8_t rgb_color = 0;
+static uint8_t rgb_light = 255;
+static uint8_t rgb_saturation = 255;
+static bool rgb_on = RGB_ON_STARTUP;
+#endif
 
-static void set_color(uint8_t r, uint8_t g, uint8_t b)
-{
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-        pixels[i].r = r;
-        pixels[i].g = g;
-        pixels[i].b = b;
-    }
-}
+#if POWER_EXT
+static bool power_ext_on = POWER_EXT_ON;
+#endif
+
+#if RGB || POWER_EXT
+static struct k_work_delayable rgb_power_ext_work;
+#endif
 
 K_THREAD_STACK_DEFINE(send_thread_area, SEND_THREAD_STACK_SIZE);
 struct k_thread send_thread_data;
@@ -685,6 +688,104 @@ static int release_key(uint16_t keycode, bool send)
 }
 
 /* ================================================ *\
+|* ===================== RGB ====================== *|
+\* ================================================ */
+
+#if RGB
+struct led_rgb hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v)
+{
+    struct led_rgb rgb;
+    uint8_t region, remainder, p, q, t;
+
+    if (s == 0)
+    {
+        rgb.r = rgb.g = rgb.b = v;
+        return rgb;
+    }
+
+    region = h / 43;
+    remainder = (h % 43) * 6;
+
+    p = (v * (255 - s)) >> 8;
+    q = (v * (255 - ((s * remainder) >> 8))) >> 8;
+    t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8;
+
+    switch (region)
+    {
+    case 0:
+        rgb.r = v;
+        rgb.g = t;
+        rgb.b = p;
+        break;
+    case 1:
+        rgb.r = q;
+        rgb.g = v;
+        rgb.b = p;
+        break;
+    case 2:
+        rgb.r = p;
+        rgb.g = v;
+        rgb.b = t;
+        break;
+    case 3:
+        rgb.r = p;
+        rgb.g = q;
+        rgb.b = v;
+        break;
+    case 4:
+        rgb.r = t;
+        rgb.g = p;
+        rgb.b = v;
+        break;
+    default:
+        rgb.r = v;
+        rgb.g = p;
+        rgb.b = q;
+        break;
+    }
+    return rgb;
+}
+
+static void hsv_to_leds(uint8_t h, uint8_t s, uint8_t v)
+{
+    for (int i = 0; i < NUM_LEDS; i++)
+    {
+        pixels[i] = hsv_to_rgb(h, s, v);
+    }
+    led_strip_update_rgb(strip, pixels, NUM_LEDS);
+}
+
+void rgb_leds_update(void)
+{
+    if (!device_is_ready(strip))
+    {
+        return;
+    }
+
+    hsv_to_leds(rgb_color, rgb_saturation, rgb_light);
+}
+#endif
+
+/* ============= RGB + POWER_EXT ============= */
+#if RGB || POWER_EXT
+static void rgb_power_ext_delayer(struct k_work *work)
+{
+
+#if POWER_EXT && POWER_EXT_RGB_LINKED
+    gpio_pin_set_dt(&power_ext, rgb_on);
+    k_sleep(K_MSEC(POWER_EXT_RGB_DELAY));
+#elif POWER_EXT
+    gpio_pin_set_dt(&power_ext, power_ext_on);
+#endif
+
+    if (rgb_on)
+    {
+        rgb_leds_update();
+    }
+}
+#endif
+
+/* ================================================ *\
 |* ==================== MATRIX ==================== *|
 \* ================================================ */
 
@@ -739,7 +840,7 @@ int matrix_init(void)
     }
 #endif
 
-#ifdef POWER_EXT
+#if POWER_EXT
     if (!gpio_is_ready_dt(&power_ext))
     {
         LOG_ERR("External power GPIO not ready");
@@ -794,15 +895,62 @@ void matrix_scan()
                         {
                             switch (keycode)
                             {
-#ifdef POWER_EXT
+/* ------------------- POWER_EXT ------------------- */
+#if POWER_EXT
                             case HID_KEY_POWER_ON:
-                                gpio_pin_set_dt(&power_ext, 1);
+                                power_ext_on = true;
+#ifdef POWER_EXT_RGB_LINKED
+                                rgb_on = power_ext_on;
+#endif
+                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
                                 break;
                             case HID_KEY_POWER_OFF:
-                                gpio_pin_set_dt(&power_ext, 0);
+                                power_ext_on = false;
+#ifdef POWER_EXT_RGB_LINKED
+                                rgb_on = power_ext_on;
+#endif
+                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+                                break;
+#endif
+/* ---------------------- RGB ---------------------- */
+#if RGB
+                            case HID_KEY_RGB_LIGHT:
+                                rgb_light = rgb_light + RGB_LIGHT_JUMP;
+                                rgb_leds_update();
+                                break;
+                            case HID_KEY_RGB_COLOR:
+                                rgb_color = rgb_color + RGB_COLOR_JUMP;
+                                rgb_leds_update();
+                                break;
+                            case HID_KEY_RGB_SATURATION:
+                                rgb_color = rgb_saturation + HID_KEY_RGB_SATURATION;
+                                rgb_leds_update();
+                                break;
+                            case HID_KEY_RGB_ON:
+                                rgb_on = true;
+#ifdef POWER_EXT_RGB_LINKED
+                                power_ext_on = rgb_on;
+#endif
+                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+                                break;
+                            case HID_KEY_RGB_OFF:
+                                rgb_on = false;
+#ifdef POWER_EXT_RGB_LINKED
+                                power_ext_on = rgb_on;
+#endif
+                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+                                break;
+                            case HID_KEY_RGB_TOGGLE:
+                                rgb_on = !rgb_on;
+#ifdef POWER_EXT_RGB_LINKED
+                                power_ext_on = rgb_on;
+#endif
+                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
                                 break;
 #endif
                             }
+                            keys[idx].status = PRESSED;
+                            last_activity = k_uptime_get_32();
                         }
                         // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
@@ -865,8 +1013,14 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > debounce_r)
                     {
+                        // Special keys
+                        if ((keycode & 0xF000) == K_SPECIAL)
+                        {
+                            keys[idx].status = RELEASED;
+                            last_activity = k_uptime_get_32();
+                        }
                         // Tap hold keys
-                        if ((keycode & 0xF000) == K_TAP_HOLD)
+                        else if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
                             // TODO improvement this knowing what key is pressed, mod or tapped key.
                             release_key((uint16_t)(keycode & 0xFF), false);
@@ -1027,7 +1181,7 @@ void sleep_init(void)
 
 void matrix_sleep(void)
 {
-#ifdef POWER_EXT
+#if POWER_EXT
     gpio_pin_set_dt(&power_ext, 0);
 #endif
 
@@ -1041,6 +1195,7 @@ void matrix_sleep(void)
     {
         if (gpio_pin_get_dt(&encoders[e]))
         {
+            gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_DOWN);
             gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_RISING);
         }
         else
@@ -1077,7 +1232,7 @@ void matrix_wakeup(void)
         gpio_pin_set_dt(&cols[c], 0);
     }
 
-#ifdef POWER_EXT
+#if POWER_EXT
     gpio_pin_set_dt(&power_ext, 1);
 #endif
 }
@@ -1115,25 +1270,6 @@ void sender_thread(void *p1, void *p2, void *p3)
     }
 }
 
-static void show_rgb(uint8_t r, uint8_t g, uint8_t b)
-{
-    set_color(r, g, b);
-    led_strip_update_rgb(strip, pixels, NUM_LEDS);
-    k_sleep(K_MSEC(200));
-}
-
-void test_rgb(void)
-{
-    if (!device_is_ready(strip))
-    {
-        return;
-    }
-
-    show_rgb(255, 0, 0);
-    show_rgb(0, 255, 0);
-    show_rgb(0, 0, 255);
-}
-
 /* ================================================ *\
 |* ===================== MAIN ===================== *|
 \* ================================================ */
@@ -1152,6 +1288,9 @@ k_tid_t threads_init()
 void delayed_init(void)
 {
     k_work_init_delayable(&timeout_tapped_keys_data.dwork, tapped_key_release_delayer);
+#if RGB || POWER_EXT
+    k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
+#endif
 }
 
 int main(void)
@@ -1213,10 +1352,12 @@ int main(void)
     threads_init();
     delayed_init();
 
+#if RGB || POWER_EXT
+    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+#endif
+
     while (1)
     {
-        test_rgb();
-
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
             matrix_sleep();

@@ -32,6 +32,35 @@
 #define TAP_HOLD_SIZE_ARRAY 3
 #endif
 
+#ifndef RGB
+#define RGB false
+#endif
+#ifndef RGB_COLOR_JUMP
+#define RGB_COLOR_JUMP 5
+#endif
+#ifndef RGB_LIGHT_JUMP
+#define RGB_LIGHT_JUMP 32
+#endif
+#ifndef RGB_SATURATION_JUMP
+#define RGB_SATURATION_JUMP 32
+#endif
+#ifndef RGB_ON_STARTUP
+#define RGB_ON_STARTUP true
+#endif
+
+#ifndef POWER_EXT
+#define POWER_EXT false
+#endif
+#ifndef POWER_EXT_RGB_LINKED
+#define POWER_EXT_RGB_LINKED true
+#endif
+#ifndef POWER_EXT_RGB_DELAY
+#define POWER_EXT_RGB_DELAY 5
+#endif
+#ifndef POWER_EXT_ON
+#define POWER_EXT_ON true
+#endif
+
 typedef enum {
     RELEASED = 0,
     PRESSED = 1,
