@@ -1179,7 +1179,7 @@ void sleep_init(void)
     gpio_add_callback(gpio1_dev, &cb_p1);
 }
 
-void matrix_sleep(void)
+void keyboard_sleep(void)
 {
 #if POWER_EXT
     gpio_pin_set_dt(&power_ext, 0);
@@ -1211,7 +1211,7 @@ void matrix_sleep(void)
     }
 }
 
-void matrix_wakeup(void)
+void keyboard_wakeup(void)
 {
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
@@ -1232,8 +1232,8 @@ void matrix_wakeup(void)
         gpio_pin_set_dt(&cols[c], 0);
     }
 
-#if POWER_EXT
-    gpio_pin_set_dt(&power_ext, 1);
+#if RGB || POWER_EXT
+    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
 #endif
 }
 
@@ -1360,11 +1360,11 @@ int main(void)
     {
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
-            matrix_sleep();
+            keyboard_sleep();
             while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
                 ;
             k_sem_take(&wakeup_sem, K_FOREVER);
-            matrix_wakeup();
+            keyboard_wakeup();
             last_activity = k_uptime_get_32();
         }
         matrix_scan();
