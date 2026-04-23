@@ -31,7 +31,7 @@
 
         spi-max-frequency = <4000000>;
 
-        chain-length = <2>;
+        chain-length = <15>;
         color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
 
         spi-one-frame = <0x70>;

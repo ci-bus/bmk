@@ -31,6 +31,12 @@
 #ifndef TAP_HOLD_SIZE_ARRAY
 #define TAP_HOLD_SIZE_ARRAY 3
 #endif
+#ifndef LOG_LEVEL
+#define LOG_LEVEL LOG_LEVEL_NONE
+#endif
+#ifndef ENCODERS
+#define ENCODERS 0
+#endif
 
 #ifndef RGB
 #define RGB false

@@ -18,7 +18,7 @@
 
 #include "main.h"
 
-LOG_MODULE_REGISTER(bmk, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
 
 #if RGB
 #define STRIP_NODE DT_NODELABEL(ws2812)
@@ -45,7 +45,7 @@ struct k_thread send_thread_data;
 K_MSGQ_DEFINE(report_msgq, sizeof(thread_report_t), SEND_THREAD_CACHE_SIZE, 4);
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
-#ifdef ENCODERS
+#if ENCODERS
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
@@ -112,7 +112,7 @@ static void keymap_init(void)
             keys[j].kc[i] = layers[i][j];
         }
     }
-#ifdef ENCODERS
+#if ENCODERS
     for (uint8_t l = 0; l < LAYERS; l++)
     {
         for (uint8_t e = 0; e < ENCODERS; e++)
@@ -436,257 +436,6 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
     .pairing_complete = auth_pairing_complete,
 };
 
-/* ==================== Key functions ==================== */
-
-static void add_held_mod_keys(uint8_t idx)
-{
-    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
-    {
-        if (held_mod_keys[i].idx == 0)
-        {
-            held_mod_keys[i].idx = idx;
-            held_mod_keys[i].layer = current_layer;
-        }
-    }
-    some_held_mod_keys = true;
-}
-
-static void remove_held_mod_keys(uint8_t idx)
-{
-    some_held_mod_keys = false;
-    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
-    {
-        if (held_mod_keys[i].idx == idx)
-        {
-            held_mod_keys[i] = (held_mod_key_t){0};
-        }
-        else if (held_mod_keys[i].idx != 0)
-        {
-            some_held_mod_keys = true;
-        }
-    }
-}
-
-static void held_mod_keys_to_report(void)
-{
-    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
-    {
-        if (held_mod_keys[i].idx != 0)
-        {
-            uint16_t keycode = (uint16_t)(keys[held_mod_keys[i].idx].kc[held_mod_keys[i].layer] >> 8);
-            report[1] |= modifier_bit(keycode);
-            keys[held_mod_keys[i].idx].status = PRESSED;
-            held_mod_keys[i] = (held_mod_key_t){0};
-        }
-    }
-    some_held_mod_keys = false;
-}
-
-static void tapped_key_release_delayer(struct k_work *work)
-{
-    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    struct timeout_tapped_keys *ctx = CONTAINER_OF(dwork, struct timeout_tapped_keys, dwork);
-    uint8_t idx = ctx->key_idx;
-    if (keys[idx].status == TAPPED)
-    {
-        keys[idx].status = RELEASED;
-    }
-}
-
-static bool add_report_to_send(bmk_report_type_t type)
-{
-    thread_report_t th_report = {
-        .type = type,
-        .report = {0},
-        .report_consumer = {0}
-
-    };
-    if (type == BMK_KEYBOARD)
-    {
-        memcpy(th_report.report, report, sizeof(report));
-    }
-    else if (type == BMK_CONSUMER)
-    {
-        memcpy(th_report.report_consumer, report_consumer, sizeof(report_consumer));
-    }
-    int ret = k_msgq_put(&report_msgq, &th_report, K_NO_WAIT);
-    last_activity = k_uptime_get_32();
-    return (ret == 0);
-}
-
-static int release_all()
-{
-    memset(report, 0, sizeof(report));
-    memset(report_consumer, 0, sizeof(report_consumer));
-    reports_init();
-    add_report_to_send(BMK_KEYBOARD);
-    add_report_to_send(BMK_CONSUMER);
-
-    return 1;
-}
-
-static int press_key(uint16_t keycode)
-{
-    uint8_t idx = 0;
-    switch (keycode & 0xF000)
-    {
-    case K_KEYBOARD:
-        if (is_modifier(keycode))
-        {
-            idx = 1;
-            report[idx] |= modifier_bit(keycode);
-            add_report_to_send(BMK_KEYBOARD);
-        }
-        else
-        {
-            // Find free index to send keycode
-            for (uint8_t i = 3; i < 9; i++)
-            {
-                if (report[i] == 0)
-                {
-                    idx = i;
-                    break;
-                }
-            }
-            if (idx != 0)
-            {
-                // Tap hold keys
-                if (some_held_mod_keys)
-                {
-                    held_mod_keys_to_report();
-                }
-                // Press key
-                report[idx] = (uint8_t)keycode;
-                add_report_to_send(BMK_KEYBOARD);
-            }
-            else
-            {
-                // No free index
-                return -1;
-            }
-        }
-        break;
-    case K_CONSUMER:
-        // Find free index to send keycode
-        for (uint8_t i = 1; i < 7; i++)
-        {
-            if (report_consumer[i] == 0)
-            {
-                idx = i;
-                break;
-            }
-        }
-        if (idx != 0)
-        {
-            // Press key
-            uint8_t code = (uint8_t)(keycode & 0xFF);
-            report_consumer[idx] = code;
-            add_report_to_send(BMK_CONSUMER);
-        }
-        else
-        {
-            // No free index
-            return -1;
-        }
-        break;
-    case K_FN:
-        uint8_t layer = keycode & 0xFF;
-        switch ((keycode >> 8) & 0x0F)
-        {
-        case 1: // MO
-            if (layer != current_layer && layer < LAYERS)
-            {
-                last_layer = current_layer;
-                current_layer = layer;
-                return release_all();
-            }
-            break;
-        }
-        break;
-    }
-    return idx;
-}
-
-static int release_key(uint16_t keycode, bool send)
-{
-    uint8_t idx = 0;
-    switch (keycode & 0xF000)
-    {
-    case K_KEYBOARD:
-        if (is_modifier(keycode))
-        {
-            idx = 1;
-            report[idx] &= ~modifier_bit(keycode);
-            add_report_to_send(BMK_KEYBOARD);
-        }
-        else
-        {
-            // Find pressed keycode
-            for (uint8_t i = 3; i < 9; i++)
-            {
-                if (report[i] == keycode)
-                {
-                    // Release key
-                    report[i] = 0;
-                    idx = i;
-                    if (send)
-                    {
-                        add_report_to_send(BMK_KEYBOARD);
-                    }
-                }
-            }
-            if (idx == 0)
-            {
-                // Key is not pressed
-                return -1;
-            }
-        }
-        break;
-    case K_CONSUMER:
-        // Find pressed keycode
-        for (uint8_t i = 1; i < 7; i++)
-        {
-            if (report_consumer[i] == (uint8_t)(keycode & 0xFF))
-            {
-                // Release key
-                report_consumer[i] = 0;
-                idx = i;
-                if (send)
-                {
-                    add_report_to_send(BMK_CONSUMER);
-                }
-            }
-        }
-        if (idx == 0)
-        {
-            // Key is not pressed
-            return -1;
-        }
-        break;
-    case K_FN:
-        uint8_t layer = keycode & 0xFF;
-        switch ((keycode >> 8) & 0x0F)
-        {
-        case 1: // MO
-            if (layer == current_layer)
-            {
-                current_layer = last_layer;
-                last_layer = layer;
-                return release_all();
-            }
-            break;
-        case 2: // TO
-            if (layer < LAYERS)
-            {
-                current_layer = layer;
-            }
-            return release_all();
-            break;
-        }
-    }
-    return idx;
-}
-
 /* ================================================ *\
 |* ===================== RGB ====================== *|
 \* ================================================ */
@@ -783,7 +532,321 @@ static void rgb_power_ext_delayer(struct k_work *work)
         rgb_leds_update();
     }
 }
+static void rgb_power_ext_update(void)
+{
+    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+}
 #endif
+
+/* ======================================================= *\
+|* ==================== Key functions ==================== *|
+\* ======================================================= */
+
+static void add_held_mod_keys(uint8_t idx)
+{
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx == 0)
+        {
+            held_mod_keys[i].idx = idx;
+            held_mod_keys[i].layer = current_layer;
+        }
+    }
+    some_held_mod_keys = true;
+}
+
+static void remove_held_mod_keys(uint8_t idx)
+{
+    some_held_mod_keys = false;
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx == idx)
+        {
+            held_mod_keys[i] = (held_mod_key_t){0};
+        }
+        else if (held_mod_keys[i].idx != 0)
+        {
+            some_held_mod_keys = true;
+        }
+    }
+}
+
+static void held_mod_keys_to_report(void)
+{
+    for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
+    {
+        if (held_mod_keys[i].idx != 0)
+        {
+            uint16_t keycode = (uint16_t)(keys[held_mod_keys[i].idx].kc[held_mod_keys[i].layer] >> 8);
+            report[1] |= modifier_bit(keycode);
+            keys[held_mod_keys[i].idx].status = PRESSED;
+            held_mod_keys[i] = (held_mod_key_t){0};
+        }
+    }
+    some_held_mod_keys = false;
+}
+
+static void tapped_key_release_delayer(struct k_work *work)
+{
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct timeout_tapped_keys *ctx = CONTAINER_OF(dwork, struct timeout_tapped_keys, dwork);
+    uint8_t idx = ctx->key_idx;
+    if (keys[idx].status == TAPPED)
+    {
+        keys[idx].status = RELEASED;
+    }
+}
+
+static bool add_report_to_send(bmk_report_type_t type)
+{
+    thread_report_t th_report = {
+        .type = type,
+        .report = {0},
+        .report_consumer = {0}
+
+    };
+    if (type == BMK_KEYBOARD)
+    {
+        memcpy(th_report.report, report, sizeof(report));
+    }
+    else if (type == BMK_CONSUMER)
+    {
+        memcpy(th_report.report_consumer, report_consumer, sizeof(report_consumer));
+    }
+    int ret = k_msgq_put(&report_msgq, &th_report, K_NO_WAIT);
+    return (ret == 0);
+}
+
+static int release_all()
+{
+    memset(report, 0, sizeof(report));
+    memset(report_consumer, 0, sizeof(report_consumer));
+    reports_init();
+    add_report_to_send(BMK_KEYBOARD);
+    add_report_to_send(BMK_CONSUMER);
+
+    return 1;
+}
+
+static int press_key(uint16_t keycode)
+{
+    uint8_t idx = 0;
+    switch (keycode & 0xF000)
+    {
+    case K_KEYBOARD:
+        if (is_modifier(keycode))
+        {
+            idx = 1;
+            report[idx] |= modifier_bit(keycode);
+            add_report_to_send(BMK_KEYBOARD);
+        }
+        else
+        {
+            // Find free index to send keycode
+            for (uint8_t i = 3; i < 9; i++)
+            {
+                if (report[i] == 0)
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx != 0)
+            {
+                // Tap hold keys
+                if (some_held_mod_keys)
+                {
+                    held_mod_keys_to_report();
+                }
+                // Press key
+                report[idx] = (uint8_t)keycode;
+                add_report_to_send(BMK_KEYBOARD);
+            }
+            else
+            {
+                // No free index
+                return -1;
+            }
+        }
+        break;
+    case K_CONSUMER:
+        // Find free index to send keycode
+        for (uint8_t i = 1; i < 7; i++)
+        {
+            if (report_consumer[i] == 0)
+            {
+                idx = i;
+                break;
+            }
+        }
+        if (idx != 0)
+        {
+            // Press key
+            uint8_t code = (uint8_t)(keycode & 0xFF);
+            report_consumer[idx] = code;
+            add_report_to_send(BMK_CONSUMER);
+        }
+        else
+        {
+            // No free index
+            return -1;
+        }
+        break;
+    case K_FN:
+        uint8_t layer = keycode & 0xFF;
+        switch ((keycode >> 8) & 0x0F)
+        {
+        case 1: // MO
+            if (layer != current_layer && layer < LAYERS)
+            {
+                last_layer = current_layer;
+                current_layer = layer;
+                return release_all();
+            }
+            break;
+        }
+        break;
+    case K_SPECIAL:
+        switch (keycode)
+        {
+#if POWER_EXT
+        case HID_KEY_POWER_ON:
+            power_ext_on = true;
+#if POWER_EXT_RGB_LINKED
+            rgb_on = power_ext_on;
+#endif
+            rgb_power_ext_update();
+            break;
+        case HID_KEY_POWER_OFF:
+            power_ext_on = false;
+#if POWER_EXT_RGB_LINKED
+            rgb_on = power_ext_on;
+#endif
+            rgb_power_ext_update();
+            break;
+#endif
+#if RGB
+        case HID_KEY_RGB_LIGHT:
+            rgb_light = rgb_light + RGB_LIGHT_JUMP;
+            rgb_leds_update();
+            break;
+        case HID_KEY_RGB_COLOR:
+            rgb_color = rgb_color + RGB_COLOR_JUMP;
+            rgb_leds_update();
+            break;
+        case HID_KEY_RGB_SATURATION:
+            rgb_color = rgb_saturation + HID_KEY_RGB_SATURATION;
+            rgb_leds_update();
+            break;
+        case HID_KEY_RGB_ON:
+            rgb_on = true;
+#if POWER_EXT_RGB_LINKED
+            power_ext_on = rgb_on;
+#endif
+            rgb_power_ext_update();
+            break;
+        case HID_KEY_RGB_OFF:
+            rgb_on = false;
+#if POWER_EXT_RGB_LINKED
+            power_ext_on = rgb_on;
+#endif
+            rgb_power_ext_update();
+            break;
+        case HID_KEY_RGB_TOGGLE:
+            rgb_on = !rgb_on;
+#if POWER_EXT_RGB_LINKED
+            power_ext_on = rgb_on;
+#endif
+            rgb_power_ext_update();
+            break;
+#endif
+        }
+        break;
+    }
+    last_activity = k_uptime_get_32();
+    return idx;
+}
+
+static int release_key(uint16_t keycode, bool send)
+{
+    uint8_t idx = 0;
+    switch (keycode & 0xF000)
+    {
+    case K_KEYBOARD:
+        if (is_modifier(keycode))
+        {
+            idx = 1;
+            report[idx] &= ~modifier_bit(keycode);
+            add_report_to_send(BMK_KEYBOARD);
+        }
+        else
+        {
+            // Find pressed keycode
+            for (uint8_t i = 3; i < 9; i++)
+            {
+                if (report[i] == keycode)
+                {
+                    // Release key
+                    report[i] = 0;
+                    idx = i;
+                    if (send)
+                    {
+                        add_report_to_send(BMK_KEYBOARD);
+                    }
+                }
+            }
+            if (idx == 0)
+            {
+                // Key is not pressed
+                return -1;
+            }
+        }
+        break;
+    case K_CONSUMER:
+        // Find pressed keycode
+        for (uint8_t i = 1; i < 7; i++)
+        {
+            if (report_consumer[i] == (uint8_t)(keycode & 0xFF))
+            {
+                // Release key
+                report_consumer[i] = 0;
+                idx = i;
+                if (send)
+                {
+                    add_report_to_send(BMK_CONSUMER);
+                }
+            }
+        }
+        if (idx == 0)
+        {
+            // Key is not pressed
+            return -1;
+        }
+        break;
+    case K_FN:
+        uint8_t layer = keycode & 0xFF;
+        switch ((keycode >> 8) & 0x0F)
+        {
+        case 1: // MO
+            if (layer == current_layer)
+            {
+                current_layer = last_layer;
+                last_layer = layer;
+                return release_all();
+            }
+            break;
+        case 2: // TO
+            if (layer < LAYERS)
+            {
+                current_layer = layer;
+            }
+            return release_all();
+            break;
+        }
+    }
+    last_activity = k_uptime_get_32();
+    return idx;
+}
 
 /* ================================================ *\
 |* ==================== MATRIX ==================== *|
@@ -823,7 +886,7 @@ int matrix_init(void)
         }
     }
 
-#ifdef ENCODERS
+#if ENCODERS
     for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
     {
         if (!gpio_is_ready_dt(&encoders[e]))
@@ -890,68 +953,6 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > debounce_p)
                     {
-                        // Special keys
-                        if ((keycode & 0xF000) == K_SPECIAL)
-                        {
-                            switch (keycode)
-                            {
-/* ------------------- POWER_EXT ------------------- */
-#if POWER_EXT
-                            case HID_KEY_POWER_ON:
-                                power_ext_on = true;
-#ifdef POWER_EXT_RGB_LINKED
-                                rgb_on = power_ext_on;
-#endif
-                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-                                break;
-                            case HID_KEY_POWER_OFF:
-                                power_ext_on = false;
-#ifdef POWER_EXT_RGB_LINKED
-                                rgb_on = power_ext_on;
-#endif
-                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-                                break;
-#endif
-/* ---------------------- RGB ---------------------- */
-#if RGB
-                            case HID_KEY_RGB_LIGHT:
-                                rgb_light = rgb_light + RGB_LIGHT_JUMP;
-                                rgb_leds_update();
-                                break;
-                            case HID_KEY_RGB_COLOR:
-                                rgb_color = rgb_color + RGB_COLOR_JUMP;
-                                rgb_leds_update();
-                                break;
-                            case HID_KEY_RGB_SATURATION:
-                                rgb_color = rgb_saturation + HID_KEY_RGB_SATURATION;
-                                rgb_leds_update();
-                                break;
-                            case HID_KEY_RGB_ON:
-                                rgb_on = true;
-#ifdef POWER_EXT_RGB_LINKED
-                                power_ext_on = rgb_on;
-#endif
-                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-                                break;
-                            case HID_KEY_RGB_OFF:
-                                rgb_on = false;
-#ifdef POWER_EXT_RGB_LINKED
-                                power_ext_on = rgb_on;
-#endif
-                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-                                break;
-                            case HID_KEY_RGB_TOGGLE:
-                                rgb_on = !rgb_on;
-#ifdef POWER_EXT_RGB_LINKED
-                                power_ext_on = rgb_on;
-#endif
-                                k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-                                break;
-#endif
-                            }
-                            keys[idx].status = PRESSED;
-                            last_activity = k_uptime_get_32();
-                        }
                         // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
@@ -1013,16 +1014,9 @@ void matrix_scan()
                 {
                     if (keys[idx].debounce_count > debounce_r)
                     {
-                        // Special keys
-                        if ((keycode & 0xF000) == K_SPECIAL)
-                        {
-                            keys[idx].status = RELEASED;
-                            last_activity = k_uptime_get_32();
-                        }
                         // Tap hold keys
-                        else if ((keycode & 0xF000) == K_TAP_HOLD)
+                        if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
-                            // TODO improvement this knowing what key is pressed, mod or tapped key.
                             release_key((uint16_t)(keycode & 0xFF), false);
                             keycode = (uint16_t)(keycode >> 8);
                         }
@@ -1079,7 +1073,7 @@ void matrix_scan()
         gpio_pin_set_dt(&cols[c], 0);
     }
 
-#ifdef ENCODERS
+#if ENCODERS
     for (uint8_t e = 0; e < ENCODERS; e += 2)
     {
         uint8_t left = gpio_pin_get_dt(&encoders[e * ENCODER_PINS]);
@@ -1190,25 +1184,17 @@ void keyboard_sleep(void)
         gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
     }
 
-#ifdef ENCODERS
-    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
-    {
-        if (gpio_pin_get_dt(&encoders[e]))
-        {
-            gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_DOWN);
-            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_RISING);
-        }
-        else
-        {
-            gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_EDGE_FALLING);
-        }
-    }
-#endif
-
     for (int c = 0; c < MATRIX_COLS; c++)
     {
         gpio_pin_set_dt(&cols[c], 1);
     }
+
+#if ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
+    }
+#endif
 }
 
 void keyboard_wakeup(void)
@@ -1219,7 +1205,7 @@ void keyboard_wakeup(void)
         gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
     }
 
-#ifdef ENCODERS
+#if ENCODERS
     for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
     {
         gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
@@ -1233,7 +1219,7 @@ void keyboard_wakeup(void)
     }
 
 #if RGB || POWER_EXT
-    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+    rgb_power_ext_update();
 #endif
 }
 
@@ -1353,7 +1339,7 @@ int main(void)
     delayed_init();
 
 #if RGB || POWER_EXT
-    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+    rgb_power_ext_update();
 #endif
 
     while (1)
