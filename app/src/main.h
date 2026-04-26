@@ -1,3 +1,8 @@
+#ifndef MAIN_H
+#define MAIN_H
+
+#include <zephyr/drivers/led_strip.h>
+
 #include "keyboard.h"
 
 // Static variables
@@ -53,6 +58,15 @@
 #ifndef RGB_ON_STARTUP
 #define RGB_ON_STARTUP true
 #endif
+#ifndef RGB_ON_STARTUP
+#define RGB_ON_STARTUP true
+#endif
+#ifndef RGB_EFFECTS
+#define RGB_EFFECTS RGB
+#endif
+#ifndef RGB_EFF_RAINBOW
+#define RGB_EFF_RAINBOW RGB
+#endif
 
 #ifndef POWER_EXT
 #define POWER_EXT false
@@ -67,20 +81,23 @@
 #define POWER_EXT_ON true
 #endif
 
-typedef enum {
+typedef enum
+{
     RELEASED = 0,
     PRESSED = 1,
     HELD = 2,
     TAPPED = 3,
 } bmk_key_status_t;
 
-struct key {
+struct key
+{
     uint16_t kc[LAYERS];
     bmk_key_status_t status;
     uint8_t debounce_count;
 };
 
-struct encoder_key {
+struct encoder_key
+{
     uint16_t left_kc[LAYERS];
     uint16_t right_kc[LAYERS];
     uint8_t last_value;
@@ -88,23 +105,29 @@ struct encoder_key {
     int direction;
 };
 
-typedef enum {
+typedef enum
+{
     BMK_KEYBOARD = BMK_HID_REPORT_ID_KEYBOARD,
     BMK_CONSUMER = BMK_HID_REPORT_ID_CONSUMER
 } bmk_report_type_t;
 
-typedef struct {
+typedef struct
+{
     bmk_report_type_t type;
     uint8_t report[9];
     uint8_t report_consumer[7];
 } thread_report_t;
 
-typedef struct {
+typedef struct
+{
     uint8_t idx;
     uint8_t layer;
 } held_mod_key_t;
 
-struct timeout_tapped_keys {
+struct timeout_tapped_keys
+{
     struct k_work_delayable dwork;
     uint8_t key_idx;
 };
+
+#endif

@@ -4,18 +4,6 @@
  * Priority: USB when connected, BLE otherwise
  */
 
-#include <zephyr/types.h>
-#include <zephyr/kernel.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/uuid.h>
-#include <zephyr/usb/usb_device.h>
-#include <zephyr/usb/class/usb_hid.h>
-#include <zephyr/drivers/led_strip.h>
-#include <hal/nrf_power.h>
-
 #include "main.h"
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
@@ -29,6 +17,9 @@ static uint8_t rgb_color = 0;
 static uint8_t rgb_light = 255;
 static uint8_t rgb_saturation = 255;
 static bool rgb_on = RGB_ON_STARTUP;
+#if RGB_EFFECTS
+static uint8_t rgb_beat = 0;
+#endif
 #endif
 
 #if POWER_EXT
@@ -513,6 +504,44 @@ void rgb_leds_update(void)
 
     hsv_to_leds(rgb_color, rgb_saturation, rgb_light);
 }
+#if RGB_EFFECTS
+#if RGB_EFF_RAINBOW
+void rgb_eff_rainbow()
+{
+    uint8_t sum = 255 / NUM_LEDS;
+    for (int i = 0; i < NUM_LEDS; i++)
+    {
+        uint8_t h = (rgb_beat + (i * sum)) % 255;
+        pixels[i] = hsv_to_rgb(h, rgb_saturation, rgb_light);
+    }
+}
+#endif
+void rgb_effects_update(void)
+{
+    rgb_beat++;
+    rgb_eff_rainbow(rgb_beat);
+    led_strip_update_rgb(strip, pixels, NUM_LEDS);
+}
+static void rgb_work_handler(struct k_work *work)
+{
+    rgb_effects_update();
+}
+K_WORK_DEFINE(rgb_work_obj, rgb_work_handler);
+
+static void rgb_timer_handler(struct k_timer *dummy)
+{
+    k_work_submit(&rgb_work_obj);
+}
+K_TIMER_DEFINE(rgb_periodic_timer, rgb_timer_handler, NULL);
+void rgb_start_periodic_task(void)
+{
+    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(20));
+}
+void rgb_stop_periodic_task(void)
+{
+    k_timer_stop(&rgb_periodic_timer);
+}
+#endif
 #endif
 
 /* ============= RGB + POWER_EXT ============= */
@@ -1340,17 +1369,26 @@ int main(void)
 
 #if RGB || POWER_EXT
     rgb_power_ext_update();
+#if RGB_EFFECTS
+    rgb_start_periodic_task();
+#endif
 #endif
 
     while (1)
     {
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
+#if RGB_EFFECTS
+            rgb_stop_periodic_task();
+#endif
             keyboard_sleep();
             while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
                 ;
             k_sem_take(&wakeup_sem, K_FOREVER);
             keyboard_wakeup();
+#if RGB_EFFECTS
+            rgb_start_periodic_task();
+#endif
             last_activity = k_uptime_get_32();
         }
         matrix_scan();
