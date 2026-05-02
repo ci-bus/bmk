@@ -4,6 +4,9 @@
  * Priority: USB when connected, BLE otherwise
  */
 
+#include <hal/nrf_power.h>
+#include <zephyr/pm/device.h>
+
 #include "main.h"
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
@@ -11,6 +14,7 @@ LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
 #if RGB
 #define STRIP_NODE DT_NODELABEL(ws2812)
 #define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
+const struct device *spi_dev = DEVICE_DT_GET(DT_NODELABEL(spi3));
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[NUM_LEDS];
 static uint8_t rgb_color = 0;
@@ -53,6 +57,11 @@ static bool some_held_mod_keys = false;
 static struct timeout_tapped_keys timeout_tapped_keys_data;
 
 /* Advertising parameters: connectable, no timeout */
+#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
+    BT_LE_ADV_OPT_CONNECTABLE,               \
+    0x0800, /* Intervalo Min: 1280 ms (0x0800 * 0.625ms) */ \
+    0x0800, /* Intervalo Max: 1280 ms */ \
+    NULL)
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
     BT_LE_ADV_OPT_CONNECTABLE,                  \
     BT_GAP_ADV_FAST_INT_MIN_2,                  \
@@ -488,7 +497,7 @@ struct led_rgb hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v)
 
 static void hsv_to_leds(uint8_t h, uint8_t s, uint8_t v)
 {
-    for (int i = 0; i < NUM_LEDS; i++)
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         pixels[i] = hsv_to_rgb(h, s, v);
     }
@@ -509,17 +518,64 @@ void rgb_leds_update(void)
 void rgb_eff_rainbow()
 {
     uint8_t sum = 255 / NUM_LEDS;
-    for (int i = 0; i < NUM_LEDS; i++)
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         uint8_t h = (rgb_beat + (i * sum)) % 255;
         pixels[i] = hsv_to_rgb(h, rgb_saturation, rgb_light);
     }
 }
 #endif
+#if RGB_EFF_COLORS
+void rgb_eff_colors()
+{
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        pixels[i] = hsv_to_rgb(rgb_beat, rgb_saturation, rgb_light);
+    }
+}
+#endif
+#if RGB_EFF_KITT
+void rgb_eff_kitt(void)
+{
+    // Calcule 2x leds num to right or left direction
+    uint8_t led_main = rgb_beat % (NUM_LEDS * 2);
+    if (led_main < NUM_LEDS) // Right direction
+    {
+        uint8_t v = rgb_light;
+        for (int i = led_main; i >= 0; i--)
+        {
+            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 3;
+        }
+        v = rgb_light / 3;
+        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
+        {
+            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 3;
+        }
+    }
+    else // Left direction
+    {
+        led_main = (rgb_beat % (NUM_LEDS * 2)) - NUM_LEDS;
+        uint8_t v = rgb_light;
+        for (int i = led_main; i >= 0; i--)
+        {
+            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 3;
+        }
+        v = rgb_light / 3;
+        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
+        {
+            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 3;
+        }
+    }
+}
+#endif
 void rgb_effects_update(void)
 {
     rgb_beat++;
-    rgb_eff_rainbow(rgb_beat);
+    rgb_eff_kitt();
     led_strip_update_rgb(strip, pixels, NUM_LEDS);
 }
 static void rgb_work_handler(struct k_work *work)
@@ -535,7 +591,7 @@ static void rgb_timer_handler(struct k_timer *dummy)
 K_TIMER_DEFINE(rgb_periodic_timer, rgb_timer_handler, NULL);
 void rgb_start_periodic_task(void)
 {
-    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(20));
+    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(50));
 }
 void rgb_stop_periodic_task(void)
 {
@@ -881,7 +937,7 @@ static int release_key(uint16_t keycode, bool send)
 |* ==================== MATRIX ==================== *|
 \* ================================================ */
 
-int matrix_init(void)
+int pins_init(void)
 {
     int err;
 
@@ -1204,8 +1260,14 @@ void sleep_init(void)
 
 void keyboard_sleep(void)
 {
+#if RGB_EFFECTS
+    rgb_stop_periodic_task();
+#endif
 #if POWER_EXT
     gpio_pin_set_dt(&power_ext, 0);
+#endif
+#if RGB
+    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
 #endif
 
     for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1246,6 +1308,10 @@ void keyboard_wakeup(void)
     {
         gpio_pin_set_dt(&cols[c], 0);
     }
+
+#if RGB
+    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
+#endif
 
 #if RGB || POWER_EXT
     rgb_power_ext_update();
@@ -1314,6 +1380,9 @@ int main(void)
 
     LOG_INF("BMK Keyboard starting...");
 
+    // nrf_power_dcdcen_vddh_set(NRF_POWER, true);
+    nrf_power_dcdcen_set(NRF_POWER, true);
+
     /* BLE init first -- always available */
     err = bt_enable(NULL);
     if (err)
@@ -1363,7 +1432,7 @@ int main(void)
     keymap_init();
 
     sleep_init();
-    matrix_init();
+    pins_init();
     threads_init();
     delayed_init();
 
@@ -1378,9 +1447,6 @@ int main(void)
     {
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
-#if RGB_EFFECTS
-            rgb_stop_periodic_task();
-#endif
             keyboard_sleep();
             while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
                 ;

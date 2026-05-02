@@ -66,7 +66,13 @@
 #define RGB_EFFECTS RGB
 #endif
 #ifndef RGB_EFF_RAINBOW
-#define RGB_EFF_RAINBOW RGB
+#define RGB_EFF_RAINBOW RGB_EFFECTS
+#endif
+#ifndef RGB_EFF_COLORS
+#define RGB_EFF_COLORS RGB_EFFECTS
+#endif
+#ifndef RGB_EFF_KITT
+#define RGB_EFF_KITT RGB_EFFECTS
 #endif
 
 #ifndef POWER_EXT
