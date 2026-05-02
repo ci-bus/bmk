@@ -20,6 +20,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/led_strip.h>
+#include <zephyr/bluetooth/services/bas.h>
 
 #include "hid.h"
 

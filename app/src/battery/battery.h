@@ -9,6 +9,9 @@
 #ifndef BAT_MIN_VOLT
 #define BAT_MIN_VOLT 3000
 #endif
+#ifndef BAT_UPDATE
+#define BAT_UPDATE 300
+#endif
 
 int32_t read_battery_voltage(void);
 

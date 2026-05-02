@@ -44,6 +44,10 @@ static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
 
+#if BATTERY
+static uint8_t battery_percent = 100;
+#endif
+
 K_SEM_DEFINE(wakeup_sem, 0, 1);
 static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
@@ -57,10 +61,10 @@ static bool some_held_mod_keys = false;
 static struct timeout_tapped_keys timeout_tapped_keys_data;
 
 /* Advertising parameters: connectable, no timeout */
-#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
-    BT_LE_ADV_OPT_CONNECTABLE,               \
+#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM(                \
+    BT_LE_ADV_OPT_CONNECTABLE,                              \
     0x0800, /* Intervalo Min: 1280 ms (0x0800 * 0.625ms) */ \
-    0x0800, /* Intervalo Max: 1280 ms */ \
+    0x0800, /* Intervalo Max: 1280 ms */                    \
     NULL)
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
     BT_LE_ADV_OPT_CONNECTABLE,                  \
@@ -620,6 +624,39 @@ static void rgb_power_ext_delayer(struct k_work *work)
 static void rgb_power_ext_update(void)
 {
     k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+}
+#endif
+
+/* ============= BATTERY LEVEL ============= */
+#if BATTERY
+int battery_update()
+{
+    int err = 0;
+    uint8_t last_battery_percent = battery_percent;
+    uint8_t battery_percent = get_battery();
+    if (last_battery_percent != battery_percent) {
+        err = bt_bas_set_battery_level(battery_percent);
+    }
+    return err;
+}
+static void bat_work_handler(struct k_work *work)
+{
+    battery_update();
+}
+K_WORK_DEFINE(bat_work_obj, bat_work_handler);
+
+static void bat_timer_handler(struct k_timer *dummy)
+{
+    k_work_submit(&bat_work_obj);
+}
+K_TIMER_DEFINE(bat_periodic_timer, bat_timer_handler, NULL);
+void bat_start_periodic_task(void)
+{
+    k_timer_start(&bat_periodic_timer, K_NO_WAIT, K_SECONDS(BAT_UPDATE));
+}
+void bat_stop_periodic_task(void)
+{
+    k_timer_stop(&bat_periodic_timer);
 }
 #endif
 
@@ -1269,6 +1306,9 @@ void keyboard_sleep(void)
 #if RGB
     pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
 #endif
+#if BATTERY
+    bat_stop_periodic_task();
+#endif
 
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
@@ -1442,6 +1482,9 @@ int main(void)
     rgb_start_periodic_task();
 #endif
 #endif
+#if BATTERY
+    bat_start_periodic_task();
+#endif
 
     while (1)
     {
@@ -1454,6 +1497,9 @@ int main(void)
             keyboard_wakeup();
 #if RGB_EFFECTS
             rgb_start_periodic_task();
+#endif
+#if BATTERY
+            bat_start_periodic_task();
 #endif
             last_activity = k_uptime_get_32();
         }

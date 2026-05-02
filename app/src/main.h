@@ -3,8 +3,8 @@
 
 #include <zephyr/drivers/led_strip.h>
 
-#include "battery/battery.h"
 #include "keyboard.h"
+#include "battery/battery.h"
 
 // Static variables
 #define SEND_THREAD_STACK_SIZE 1024
@@ -86,6 +86,10 @@
 #endif
 #ifndef POWER_EXT_ON
 #define POWER_EXT_ON true
+#endif
+
+#ifndef BATTERY
+#define BATTERY true
 #endif
 
 typedef enum
