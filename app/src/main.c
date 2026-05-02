@@ -343,6 +343,47 @@ static int send_report(thread_report_t *report)
     return ble_send_report(report);
 }
 
+/* ============= BATTERY LEVEL ============= */
+#if BATTERY
+int battery_update()
+{
+    int32_t res = read_battery_voltage();
+    uint8_t diagnostic_val;
+
+    if (res == -10) diagnostic_val = 10;      // Error: Puntero NULL
+    else if (res == -20) diagnostic_val = 20; // Error: Device not ready
+    else if (res == -30) diagnostic_val = 30; // Error: Init sequence fail
+    else if (res < 0) diagnostic_val = (uint8_t)(res * -1);    // Error: Fallo en adc_read
+    else if (res == 0) diagnostic_val = 5;    // Leyó 0V (Raro en VDDH)
+    else {
+        // Si recibes un valor > 50, es el valor RAW del ADC dividido para que quepa en un uint8_t
+        // O simplemente envía un número fijo para confirmar que la función TERMINÓ.
+        diagnostic_val = 99; 
+    }
+
+    return bt_bas_set_battery_level(diagnostic_val);
+}
+static void bat_work_handler(struct k_work *work)
+{
+    battery_update();
+}
+K_WORK_DEFINE(bat_work_obj, bat_work_handler);
+
+static void bat_timer_handler(struct k_timer *dummy)
+{
+    k_work_submit(&bat_work_obj);
+}
+K_TIMER_DEFINE(bat_periodic_timer, bat_timer_handler, NULL);
+void bat_start_periodic_task(void)
+{
+    k_timer_start(&bat_periodic_timer, K_NO_WAIT, K_SECONDS(BAT_UPDATE));
+}
+void bat_stop_periodic_task(void)
+{
+    k_timer_stop(&bat_periodic_timer);
+}
+#endif
+
 /* ==================== Connection Management ==================== */
 
 static const struct bt_data ad[] = {
@@ -630,41 +671,6 @@ static void rgb_power_ext_delayer(struct k_work *work)
 static void rgb_power_ext_update(void)
 {
     k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
-}
-#endif
-
-/* ============= BATTERY LEVEL ============= */
-#if BATTERY
-int battery_update()
-{
-    int err = 0;
-    uint8_t last_battery_percent = battery_percent;
-    uint8_t battery_percent = get_battery();
-    if (last_battery_percent != battery_percent)
-    {
-        // TODO hardcode 50 to tests
-        err = bt_bas_set_battery_level(50);
-    }
-    return err;
-}
-static void bat_work_handler(struct k_work *work)
-{
-    battery_update();
-}
-K_WORK_DEFINE(bat_work_obj, bat_work_handler);
-
-static void bat_timer_handler(struct k_timer *dummy)
-{
-    k_work_submit(&bat_work_obj);
-}
-K_TIMER_DEFINE(bat_periodic_timer, bat_timer_handler, NULL);
-void bat_start_periodic_task(void)
-{
-    k_timer_start(&bat_periodic_timer, K_NO_WAIT, K_SECONDS(BAT_UPDATE));
-}
-void bat_stop_periodic_task(void)
-{
-    k_timer_stop(&bat_periodic_timer);
 }
 #endif
 
@@ -1289,22 +1295,24 @@ void universal_handler(const struct device *port, struct gpio_callback *cb, uint
 
 void sleep_init(void)
 {
-    // Obtenemos los dispositivos de los dos puertos
+    // Get pin ports
     const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
     const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
 
-    // Configuramos el callback para el Puerto 0 (P0.00 a P0.31)
+    // Config callback for all pins port 0
     gpio_init_callback(&cb_p0, universal_handler, 0xFFFFFFFF);
     gpio_add_callback(gpio0_dev, &cb_p0);
 
-    // Configuramos el callback para el Puerto 1 (P1.00 a P1.15)
-    // El puerto 1 solo tiene 16 pines, pero 0xFFFFFFFF no le hace daño
+    // Config callback for all pins port 1
     gpio_init_callback(&cb_p1, universal_handler, 0xFFFFFFFF);
     gpio_add_callback(gpio1_dev, &cb_p1);
 }
 
 void keyboard_sleep(void)
 {
+#if BATTERY
+    bat_stop_periodic_task();
+#endif
 #if RGB_EFFECTS
     rgb_stop_periodic_task();
 #endif
@@ -1313,9 +1321,6 @@ void keyboard_sleep(void)
 #endif
 #if RGB
     pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
-#if BATTERY
-    bat_stop_periodic_task();
 #endif
 
     for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1357,12 +1362,17 @@ void keyboard_wakeup(void)
         gpio_pin_set_dt(&cols[c], 0);
     }
 
+#if RGB || POWER_EXT
+    rgb_power_ext_update();
+#endif
 #if RGB
     pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
 #endif
-
-#if RGB || POWER_EXT
-    rgb_power_ext_update();
+#if RGB_EFFECTS
+    rgb_start_periodic_task();
+#endif
+#if BATTERY
+    bat_start_periodic_task();
 #endif
 }
 
@@ -1500,12 +1510,6 @@ int main(void)
                 ;
             k_sem_take(&wakeup_sem, K_FOREVER);
             keyboard_wakeup();
-#if RGB_EFFECTS
-            rgb_start_periodic_task();
-#endif
-#if BATTERY
-            bat_start_periodic_task();
-#endif
             last_activity = k_uptime_get_32();
         }
         matrix_scan();
