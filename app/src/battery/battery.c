@@ -1,3 +1,4 @@
+#include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
 
 #include "battery.h"
@@ -25,4 +26,21 @@ int32_t read_battery_voltage(void) {
     
     // Como usamos VDDHDIV5, el valor real es 5 veces lo que lee el ADC
     return val_mv * 5;
+}
+
+uint8_t calculate_battery_percentage(int32_t voltage_mv) {
+    if (voltage_mv >= BAT_MAX_VOLT) {
+        return 100;
+    }
+    if (voltage_mv <= BAT_MIN_VOLT) {
+        return 0;
+    }
+
+    // Interpolación lineal: (V - Vmin) * 100 / (Vmax - Vmin)
+    return (uint8_t)(((voltage_mv - BAT_MIN_VOLT) * 100) / (BAT_MAX_VOLT - BAT_MIN_VOLT));
+}
+
+uint8_t get_battery() {
+    int32_t voltaje = read_battery_voltage();
+    return calculate_battery_percentage(voltaje);
 }
