@@ -387,6 +387,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("BLE connected");
     current_conn = bt_conn_ref(conn);
     bt_conn_set_security(conn, BT_SECURITY_L2);
+#if BATTERY
+    bat_start_periodic_task();
+#endif
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -400,6 +403,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
+#if BATTERY
+    bat_stop_periodic_task();
+#endif
     start_advertising();
 }
 
@@ -634,8 +640,10 @@ int battery_update()
     int err = 0;
     uint8_t last_battery_percent = battery_percent;
     uint8_t battery_percent = get_battery();
-    if (last_battery_percent != battery_percent) {
-        err = bt_bas_set_battery_level(battery_percent);
+    if (last_battery_percent != battery_percent)
+    {
+        // TODO hardcode 50 to tests
+        err = bt_bas_set_battery_level(50);
     }
     return err;
 }
@@ -1481,9 +1489,6 @@ int main(void)
 #if RGB_EFFECTS
     rgb_start_periodic_task();
 #endif
-#endif
-#if BATTERY
-    bat_start_periodic_task();
 #endif
 
     while (1)
