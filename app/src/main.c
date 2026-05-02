@@ -345,23 +345,14 @@ static int send_report(thread_report_t *report)
 
 /* ============= BATTERY LEVEL ============= */
 #if BATTERY
-int battery_update()
+void battery_update(void)
 {
-    int32_t res = read_battery_voltage();
-    uint8_t diagnostic_val;
-
-    if (res == -10) diagnostic_val = 10;      // Error: Puntero NULL
-    else if (res == -20) diagnostic_val = 20; // Error: Device not ready
-    else if (res == -30) diagnostic_val = 30; // Error: Init sequence fail
-    else if (res < 0) diagnostic_val = (uint8_t)(res * -1);    // Error: Fallo en adc_read
-    else if (res == 0) diagnostic_val = 5;    // Leyó 0V (Raro en VDDH)
-    else {
-        // Si recibes un valor > 50, es el valor RAW del ADC dividido para que quepa en un uint8_t
-        // O simplemente envía un número fijo para confirmar que la función TERMINÓ.
-        diagnostic_val = 99; 
+    uint8_t last_battery_percent = battery_percent;
+    uint8_t battery_percent = get_battery();
+    if (last_battery_percent != battery_percent)
+    {
+        bt_bas_set_battery_level(battery_percent);
     }
-
-    return bt_bas_set_battery_level(diagnostic_val);
 }
 static void bat_work_handler(struct k_work *work)
 {

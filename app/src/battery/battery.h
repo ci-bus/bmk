@@ -3,11 +3,8 @@
 
 #include <zephyr/types.h>
 
-#ifndef BAT_MAX_VOLT
-#define BAT_MAX_VOLT 4200
-#endif
-#ifndef BAT_MIN_VOLT
-#define BAT_MIN_VOLT 3000
+#ifndef BATTERY
+#define BATTERY true
 #endif
 #ifndef BAT_UPDATE
 #define BAT_UPDATE 4
