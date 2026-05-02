@@ -3,6 +3,7 @@
 
 #include <zephyr/drivers/led_strip.h>
 
+#include "battery/battery.h"
 #include "keyboard.h"
 
 // Static variables

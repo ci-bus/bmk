@@ -4,15 +4,14 @@ set(NO_BUILD_TYPE_WARNING ON)
 list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(RGB_OVERLAY "keyboards/${KEYBOARD}/rgb.overlay")
-set(RGB_CONF    "boards/arm/common/rgb.conf")
-
 if(EXISTS ${RGB_OVERLAY})
   message(STATUS "RGB habilitado para ${KEYBOARD}")
-  list(APPEND EXTRA_CONF_FILE ${RGB_CONF})
   set(DTC_OVERLAY_FILE 
     "keyboards/${KEYBOARD}/rgb.overlay"
   )
 endif()
+
+set(DTC_OVERLAY_FILE "boards/arm/common/battery.overlay")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(keyboard-firmware)
