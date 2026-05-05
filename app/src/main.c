@@ -22,7 +22,7 @@ static uint8_t rgb_light = 255;
 static uint8_t rgb_saturation = 255;
 static bool rgb_on = RGB_ON_STARTUP;
 #if RGB_EFFECTS
-static uint8_t rgb_beat = 0;
+static uint32_t rgb_beat = 0;
 #endif
 #endif
 
@@ -572,7 +572,7 @@ void rgb_eff_colors()
 {
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
-        pixels[i] = hsv_to_rgb(rgb_beat, rgb_saturation, rgb_light);
+        pixels[i] = hsv_to_rgb(rgb_beat % 255, rgb_saturation, rgb_light);
     }
 }
 #endif

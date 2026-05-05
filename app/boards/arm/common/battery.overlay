@@ -13,7 +13,8 @@
         reg = <0>;
         zephyr,gain = "ADC_GAIN_1_2";
         zephyr,reference = "ADC_REF_INTERNAL";
-        zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)>;
+        zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 20)>;
+        zephyr,oversampling = <2>;
         zephyr,input-positive = <13>;
         zephyr,resolution = <12>;
     };
