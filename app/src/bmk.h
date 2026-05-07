@@ -22,6 +22,7 @@
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/bluetooth/services/bas.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/sys/reboot.h>
 
 #include "hid.h"
 

@@ -22,7 +22,7 @@ static uint8_t rgb_light = 255;
 static uint8_t rgb_saturation = 255;
 static bool rgb_on = RGB_ON_STARTUP;
 #if RGB_EFFECTS
-static uint32_t rgb_beat = 0;
+static uint8_t rgb_beat = 0;
 #endif
 #endif
 
@@ -48,10 +48,10 @@ static struct encoder_key encoder_keys[ENCODERS] = {0};
 static uint8_t battery_percent = 100;
 #endif
 
-K_SEM_DEFINE(wakeup_sem, 0, 1);
+K_SEM_DEFINE(sleep_sem, 0, 1);
 static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
-static uint32_t last_activity = 0;
+static int32_t last_activity = 0;
 
 static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_delay, second_tap_delay;
 static uint8_t current_layer = 0;
@@ -59,12 +59,13 @@ static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static struct timeout_tapped_keys timeout_tapped_keys_data;
+static struct k_work_delayable security_work;
 
 /* Advertising parameters: connectable, no timeout */
-#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM(                \
-    BT_LE_ADV_OPT_CONNECTABLE,                              \
-    0x0800, /* Intervalo Min: 1280 ms (0x0800 * 0.625ms) */ \
-    0x0800, /* Intervalo Max: 1280 ms */                    \
+#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
+    BT_LE_ADV_OPT_CONNECTABLE,               \
+    0x0800,                                  \
+    0x0960,                                  \
     NULL)
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
     BT_LE_ADV_OPT_CONNECTABLE,                  \
@@ -189,7 +190,7 @@ static int usb_send_report(const thread_report_t *report)
 
 static bool ble_notify_enabled;
 static bool boot_notify_enabled;
-static struct bt_conn *current_conn;
+static struct bt_conn *current_conn = NULL;
 static uint8_t protocol_mode = 0x01;
 
 static ssize_t read_hid_info(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -299,7 +300,7 @@ static int ble_send_report(thread_report_t *report)
     uint8_t *buf;
     const struct bt_gatt_attr *attr;
 
-    if (!current_conn)
+    if (current_conn == NULL)
     {
         return -ENOTCONN;
     }
@@ -374,109 +375,6 @@ void bat_stop_periodic_task(void)
     k_timer_stop(&bat_periodic_timer);
 }
 #endif
-
-/* ==================== Connection Management ==================== */
-
-static const struct bt_data ad[] = {
-    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA_BYTES(
-        BT_DATA_UUID16_ALL,
-        BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
-        BT_UUID_16_ENCODE(BT_UUID_DIS_VAL),
-        BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
-    BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
-};
-
-static const struct bt_data sd[] = {
-    BT_DATA(
-        BT_DATA_NAME_COMPLETE,
-        CONFIG_BT_DEVICE_NAME,
-        sizeof(CONFIG_BT_DEVICE_NAME) - 1),
-};
-
-static void start_advertising(void)
-{
-    int err = bt_le_adv_start(
-        BT_LE_ADV_CONN_FOREVER,
-        ad,
-        ARRAY_SIZE(ad),
-        sd,
-        ARRAY_SIZE(sd));
-    if (err && err != -EALREADY)
-    {
-        LOG_ERR("Advertising failed (err %d)", err);
-    }
-}
-
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-    if (err)
-    {
-        LOG_ERR("Connection failed (err 0x%02x)", err);
-        start_advertising();
-        return;
-    }
-    LOG_INF("BLE connected");
-    current_conn = bt_conn_ref(conn);
-    bt_conn_set_security(conn, BT_SECURITY_L2);
-#if BATTERY
-    bat_start_periodic_task();
-#endif
-}
-
-static void disconnected(struct bt_conn *conn, uint8_t reason)
-{
-    LOG_INF("BLE disconnected (reason 0x%02x)", reason);
-    if (current_conn)
-    {
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
-    }
-    ble_notify_enabled = false;
-    boot_notify_enabled = false;
-    protocol_mode = 0x01;
-#if BATTERY
-    bat_stop_periodic_task();
-#endif
-    start_advertising();
-}
-
-static void security_changed(struct bt_conn *conn, bt_security_t level,
-                             enum bt_security_err err)
-{
-    if (err)
-    {
-        LOG_ERR("Security failed (err %d)", err);
-    }
-    else
-    {
-        LOG_INF("Security level %d", level);
-    }
-}
-
-BT_CONN_CB_DEFINE(conn_callbacks) = {
-    .connected = connected,
-    .disconnected = disconnected,
-    .security_changed = security_changed,
-};
-
-static void auth_cancel(struct bt_conn *conn)
-{
-    LOG_INF("Pairing cancelled");
-}
-
-static void auth_pairing_complete(struct bt_conn *conn, bool bonded)
-{
-    LOG_INF("Pairing complete (bonded=%d)", bonded);
-}
-
-static struct bt_conn_auth_cb auth_cb = {
-    .cancel = auth_cancel,
-};
-
-static struct bt_conn_auth_info_cb auth_info_cb = {
-    .pairing_complete = auth_pairing_complete,
-};
 
 /* ================================================ *\
 |* ===================== RGB ====================== *|
@@ -562,7 +460,7 @@ void rgb_eff_rainbow()
     uint8_t sum = 255 / NUM_LEDS;
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
-        uint8_t h = (rgb_beat + (i * sum)) % 255;
+        uint8_t h = (rgb_beat + (i * sum));
         pixels[i] = hsv_to_rgb(h, rgb_saturation, rgb_light);
     }
 }
@@ -572,7 +470,7 @@ void rgb_eff_colors()
 {
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
-        pixels[i] = hsv_to_rgb(rgb_beat % 255, rgb_saturation, rgb_light);
+        pixels[i] = hsv_to_rgb(rgb_beat, rgb_saturation, rgb_light);
     }
 }
 #endif
@@ -587,13 +485,13 @@ void rgb_eff_kitt(void)
         for (int i = led_main; i >= 0; i--)
         {
             pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 3;
+            v = v / 4;
         }
-        v = rgb_light / 3;
+        v = rgb_light / 4;
         for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
         {
             pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 3;
+            v = v / 4;
         }
     }
     else // Left direction
@@ -603,14 +501,18 @@ void rgb_eff_kitt(void)
         for (int i = led_main; i >= 0; i--)
         {
             pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 3;
+            v = v / 4;
         }
-        v = rgb_light / 3;
+        v = rgb_light / 4;
         for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
         {
             pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 3;
+            v = v / 4;
         }
+    }
+    if (led_main == 0)
+    {
+        rgb_beat = 0;
     }
 }
 #endif
@@ -664,6 +566,279 @@ static void rgb_power_ext_update(void)
     k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
 }
 #endif
+
+/* =============================================== *\
+|* ================= ADVERTISING ================= *|
+\* =============================================== */
+
+static const struct bt_data ad[] = {
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA_BYTES(
+        BT_DATA_UUID16_ALL,
+        BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_DIS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
+    BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
+};
+
+static const struct bt_data sd[] = {
+    BT_DATA(
+        BT_DATA_NAME_COMPLETE,
+        CONFIG_BT_DEVICE_NAME,
+        sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
+static void start_advertising(void)
+{
+    bt_le_adv_stop();
+    int err = bt_le_adv_start(
+        BT_LE_ADV_CONN_FOREVER,
+        ad,
+        ARRAY_SIZE(ad),
+        sd,
+        ARRAY_SIZE(sd));
+    if (err && err != -EALREADY)
+    {
+        LOG_ERR("Advertising failed (err %d)", err);
+    }
+}
+
+static void start_slow_advertising(void)
+{
+    bt_le_adv_stop();
+    int err = bt_le_adv_start(
+        BT_LE_ADV_CONN_SLOW,
+        ad,
+        ARRAY_SIZE(ad),
+        sd,
+        ARRAY_SIZE(sd));
+    if (err && err != -EALREADY)
+    {
+        LOG_ERR("Advertising failed (err %d)", err);
+    }
+}
+
+/* =============================================== *\
+|* ==================== SLEEP ==================== *|
+\* =============================================== */
+
+void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins)
+{
+    k_sem_give(&sleep_sem);
+}
+
+void sleep_init(void)
+{
+    // Get pin ports
+    const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
+
+    // Config callback for all pins port 0
+    gpio_init_callback(&cb_p0, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio0_dev, &cb_p0);
+
+    // Config callback for all pins port 1
+    gpio_init_callback(&cb_p1, universal_handler, 0xFFFFFFFF);
+    gpio_add_callback(gpio1_dev, &cb_p1);
+}
+
+void keyboard_sleep(void)
+{
+    bt_le_adv_stop();
+
+#if BATTERY
+    bat_stop_periodic_task();
+#endif
+#if RGB_EFFECTS
+    rgb_stop_periodic_task();
+#endif
+#if POWER_EXT
+    gpio_pin_set_dt(&power_ext, 0);
+#endif
+#if RGB
+    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
+#endif
+
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
+    }
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 1);
+    }
+
+#if ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
+    }
+#endif
+}
+
+/* ================================================= *\
+|* ============= Connection Management ============= *|
+\* ================================================= */
+
+void force_bluetooth_reset(void)
+{
+#if BATTERY
+    bat_stop_periodic_task();
+#endif
+    if (current_conn)
+    {
+        bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    }
+    bt_unpair(BT_ID_DEFAULT, NULL);
+    bt_le_adv_stop();
+    start_advertising();
+}
+
+static void security_work_handler(struct k_work *work)
+{
+    if (current_conn)
+    {
+        LOG_INF("Aplicando seguridad de forma diferida...");
+        int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
+        if (err)
+        {
+            LOG_ERR("Error al solicitar seguridad diferida (err %d)", err);
+            force_bluetooth_reset();
+        }
+    }
+}
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+    if (err)
+    {
+        LOG_ERR("Connection failed (err 0x%02x)", err);
+        force_bluetooth_reset();
+        return;
+    }
+    LOG_INF("BLE connected");
+    current_conn = bt_conn_ref(conn);
+
+    k_work_reschedule(&security_work, K_MSEC(200));
+
+#if BATTERY
+    bat_start_periodic_task();
+#endif
+}
+
+static void disconnected(struct bt_conn *conn, uint8_t reason)
+{
+    LOG_INF("BLE disconnected (reason 0x%02x)", reason);
+    if (current_conn)
+    {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+    ble_notify_enabled = false;
+    boot_notify_enabled = false;
+    protocol_mode = 0x01;
+    if (reason)
+    {
+        if (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN || reason == BT_HCI_ERR_REMOTE_POWER_OFF || reason == BT_HCI_ERR_LOCALHOST_TERM_CONN)
+        {
+            last_activity = -(SLEEP_TIMEOUT * 1000);
+        }
+    }
+}
+
+static void security_changed(struct bt_conn *conn, bt_security_t level,
+                             enum bt_security_err err)
+{
+    if (err)
+    {
+        force_bluetooth_reset();
+    }
+    else
+    {
+        LOG_INF("Security level %d", level);
+    }
+}
+
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+    .connected = connected,
+    .disconnected = disconnected,
+    .security_changed = security_changed,
+};
+
+static void auth_cancel(struct bt_conn *conn)
+{
+    LOG_INF("Pairing cancelled");
+    force_bluetooth_reset();
+}
+
+static void pairing_complete(struct bt_conn *conn, bool bonded)
+{
+    LOG_INF("Pairing complete (bonded=%d)", bonded);
+}
+
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
+{
+    LOG_INF("Pairing failed");
+    if (err)
+    {
+        force_bluetooth_reset();
+    }
+}
+
+static struct bt_conn_auth_cb auth_cb = {
+    .cancel = auth_cancel,
+};
+
+static struct bt_conn_auth_info_cb auth_info_cb = {
+    .pairing_complete = pairing_complete,
+    .pairing_failed = pairing_failed,
+};
+
+/* ======================================================= *\
+|* ======================= WAKE UP ======================= *|
+\* ======================================================= */
+
+void keyboard_wakeup(void)
+{
+    if (current_conn == NULL)
+    {
+        sys_reboot(SYS_REBOOT_COLD);
+        return;
+    }
+
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
+    }
+
+#if ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
+    }
+#endif
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 0);
+    }
+
+#if RGB || POWER_EXT
+    rgb_power_ext_update();
+#endif
+#if RGB
+    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
+#endif
+#if RGB_EFFECTS
+    rgb_start_periodic_task();
+#endif
+#if BATTERY
+    bat_start_periodic_task();
+#endif
+}
 
 /* ======================================================= *\
 |* ==================== Key functions ==================== *|
@@ -887,6 +1062,9 @@ static int press_key(uint16_t keycode)
             rgb_power_ext_update();
             break;
 #endif
+        case HID_BT_CLEAR:
+            force_bluetooth_reset();
+            break;
         }
         break;
     }
@@ -1275,98 +1453,6 @@ void matrix_scan()
 #endif
 }
 
-/* =============================================== *\
-|* ==================== SLEEP ==================== *|
-\* =============================================== */
-
-void universal_handler(const struct device *port, struct gpio_callback *cb, uint32_t pins)
-{
-    k_sem_give(&wakeup_sem);
-}
-
-void sleep_init(void)
-{
-    // Get pin ports
-    const struct device *gpio0_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
-    const struct device *gpio1_dev = DEVICE_DT_GET(DT_NODELABEL(gpio1));
-
-    // Config callback for all pins port 0
-    gpio_init_callback(&cb_p0, universal_handler, 0xFFFFFFFF);
-    gpio_add_callback(gpio0_dev, &cb_p0);
-
-    // Config callback for all pins port 1
-    gpio_init_callback(&cb_p1, universal_handler, 0xFFFFFFFF);
-    gpio_add_callback(gpio1_dev, &cb_p1);
-}
-
-void keyboard_sleep(void)
-{
-#if BATTERY
-    bat_stop_periodic_task();
-#endif
-#if RGB_EFFECTS
-    rgb_stop_periodic_task();
-#endif
-#if POWER_EXT
-    gpio_pin_set_dt(&power_ext, 0);
-#endif
-#if RGB
-    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
-
-    for (int r = 0; r < MATRIX_ROWS; r++)
-    {
-        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
-    }
-
-    for (int c = 0; c < MATRIX_COLS; c++)
-    {
-        gpio_pin_set_dt(&cols[c], 1);
-    }
-
-#if ENCODERS
-    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
-    {
-        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
-    }
-#endif
-}
-
-void keyboard_wakeup(void)
-{
-    for (int r = 0; r < MATRIX_ROWS; r++)
-    {
-        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
-        gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
-    }
-
-#if ENCODERS
-    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
-    {
-        gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_DISABLE);
-        gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
-    }
-#endif
-
-    for (int c = 0; c < MATRIX_COLS; c++)
-    {
-        gpio_pin_set_dt(&cols[c], 0);
-    }
-
-#if RGB || POWER_EXT
-    rgb_power_ext_update();
-#endif
-#if RGB
-    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
-#endif
-#if RGB_EFFECTS
-    rgb_start_periodic_task();
-#endif
-#if BATTERY
-    bat_start_periodic_task();
-#endif
-}
-
 /* ================================================ *\
 |* ===================== SEND ===================== *|
 \* ================================================ */
@@ -1417,6 +1503,7 @@ k_tid_t threads_init()
 
 void delayed_init(void)
 {
+    k_work_init_delayable(&security_work, security_work_handler);
     k_work_init_delayable(&timeout_tapped_keys_data.dwork, tapped_key_release_delayer);
 #if RGB || POWER_EXT
     k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
@@ -1432,23 +1519,28 @@ int main(void)
     // nrf_power_dcdcen_vddh_set(NRF_POWER, true);
     nrf_power_dcdcen_set(NRF_POWER, true);
 
-    /* BLE init first -- always available */
+    err = settings_subsys_init();
+    if (err)
+    {
+        LOG_ERR("Error to init settings subsistem (err %d)", err);
+    }
+
+    delayed_init();
+
     err = bt_enable(NULL);
     if (err)
     {
-        LOG_ERR("Bluetooth init failed (err %d)", err);
         return 0;
     }
-    LOG_INF("Bluetooth ready");
 
     bt_conn_auth_cb_register(&auth_cb);
     bt_conn_auth_info_cb_register(&auth_info_cb);
 
-    bt_unpair(BT_ID_DEFAULT, BT_ADDR_LE_ANY);
-    LOG_INF("Bonds cleared");
+#if IS_ENABLED(CONFIG_SETTINGS)
+    settings_load();
+#endif
 
     start_advertising();
-    LOG_INF("Advertising as '%s'", CONFIG_BT_DEVICE_NAME);
 
     /* USB HID init -- only if VBUS detected */
     if (nrf_power_usbregstatus_vbusdet_get(NRF_POWER))
@@ -1483,7 +1575,6 @@ int main(void)
     sleep_init();
     pins_init();
     threads_init();
-    delayed_init();
 
 #if RGB || POWER_EXT
     rgb_power_ext_update();
@@ -1497,9 +1588,9 @@ int main(void)
         if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
         {
             keyboard_sleep();
-            while (k_sem_take(&wakeup_sem, K_NO_WAIT) == 0)
+            while (k_sem_take(&sleep_sem, K_NO_WAIT) == 0)
                 ;
-            k_sem_take(&wakeup_sem, K_FOREVER);
+            k_sem_take(&sleep_sem, K_FOREVER);
             keyboard_wakeup();
             last_activity = k_uptime_get_32();
         }

@@ -64,9 +64,9 @@ uint8_t calculate_battery_percentage(int32_t voltage)
     {
         result = 100;
     }
-    else if (percent < 0)
+    else if (percent < 1)
     {
-        result = 0;
+        result = 1;
     }
     else
     {
