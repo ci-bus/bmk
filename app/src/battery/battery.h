@@ -16,7 +16,7 @@
 #define BAT_MAX 4100
 #endif
 #ifndef BAT_MIN
-#define BAT_MIN 3500
+#define BAT_MIN 3400
 #endif
 
 int32_t read_battery_voltage(void);

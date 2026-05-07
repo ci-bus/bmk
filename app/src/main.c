@@ -510,10 +510,6 @@ void rgb_eff_kitt(void)
             v = v / 4;
         }
     }
-    if (led_main == 0)
-    {
-        rgb_beat = 0;
-    }
 }
 #endif
 void rgb_effects_update(void)

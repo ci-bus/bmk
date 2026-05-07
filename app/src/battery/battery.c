@@ -5,6 +5,7 @@
 
 static float smoothed_percent = 0;
 static const struct adc_dt_spec adc_chan0 = ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
+static bool bat_first_read = true;
 
 // Variable para asegurar que solo configuramos el canal una vez
 static bool adc_configured = false;
@@ -33,60 +34,62 @@ int32_t read_battery_voltage(void)
     struct adc_sequence sequence = {
         .buffer = &buf,
         .buffer_size = sizeof(buf),
-        .oversampling = 4,
-        .calibrate = false,
+        .oversampling = 2,
+        .calibrate = bat_first_read,
     };
 
     adc_sequence_init_dt(&adc_chan0, &sequence);
 
-    rc = adc_read(adc_chan0.dev, &sequence);
-    if (rc != 0)
-    {
-        return rc;
-    }
+    adc_read(adc_chan0.dev, &sequence);
 
     val = (int32_t)buf;
 
-    rc = adc_raw_to_millivolts_dt(&adc_chan0, &val);
-    if (rc != 0)
-    {
-        return rc;
-    }
+    val = (val * 6000) >> 12;
 
-    return val * 5;
+    return val > 1 ? val : 1;
 }
 
 uint8_t calculate_battery_percentage(int32_t voltage)
 {
-    uint8_t result = 100;
-    int8_t percent = ((voltage - BAT_MIN) / (BAT_MAX - BAT_MIN)) * 100;
-    if (percent > 100)
+    uint8_t percent;
+
+    if (voltage > BAT_MAX)
     {
-        result = 100;
+        percent = 100;
     }
-    else if (percent < 1)
+    else if (voltage < BAT_MIN)
     {
-        result = 1;
+        percent = 1;
     }
     else
     {
-        result = (uint8_t)percent;
+        percent = ((voltage - BAT_MIN) * 100) / (BAT_MAX - BAT_MIN);
     }
 
-    return result;
+    return percent;
 }
 
 uint8_t get_battery()
 {
     int32_t voltaje = read_battery_voltage();
     uint8_t percent = calculate_battery_percentage(voltaje);
-    if (percent > smoothed_percent)
+
+    if (bat_first_read)
     {
-        smoothed_percent += (BAT_SMOTHING * 5);
+        bat_first_read = false;
+        smoothed_percent = percent;
+        return percent;
     }
-    else if (percent < smoothed_percent)
+    else
     {
-        smoothed_percent -= BAT_SMOTHING;
+        if (percent > smoothed_percent)
+        {
+            smoothed_percent += (BAT_SMOTHING * 5);
+        }
+        else if (percent < smoothed_percent)
+        {
+            smoothed_percent -= BAT_SMOTHING;
+        }
+        return (uint8_t)smoothed_percent;
     }
-    return (uint8_t)smoothed_percent;
 }
