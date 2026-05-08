@@ -51,22 +51,33 @@ int32_t read_battery_voltage(void)
 
 uint8_t calculate_battery_percentage(int32_t voltage)
 {
-    uint8_t percent;
+    uint8_t percent = 1;
 
-    if (voltage > BAT_MAX)
+    if (voltage < 3300)
     {
-        percent = 100;
+        return percent;
     }
-    else if (voltage < BAT_MIN)
+    else if (voltage < 3500) // 10% 1/2 3300 - 3500
     {
-        percent = 1;
+        percent = (voltage - 3300) * 10 / 200;
     }
-    else
+    else if (voltage < 3600) // 10% 1/1 3500 - 3600
     {
-        percent = ((voltage - BAT_MIN) * 100) / (BAT_MAX - BAT_MIN);
+        percent = ((voltage - 3500) / 10) + 10;
     }
-
-    return percent;
+    else if (voltage < 3800) // 60% 6/2 3600 - 3800
+    {
+        percent = ((voltage - 3600) * 60 / 200) + 20;
+    }
+    else if (voltage < 3900) // 10% 1/1 3800 - 3900
+    {
+        percent = ((voltage - 3800) / 10) + 80;
+    }
+    else // 10% 1/2 3900 - 4100
+    {
+        percent = ((voltage - 3900) * 10 / 200) + 90;
+    }
+    return percent > 100 ? 100 : percent;
 }
 
 uint8_t get_battery()
@@ -84,7 +95,7 @@ uint8_t get_battery()
     {
         if (percent > smoothed_percent)
         {
-            smoothed_percent += (BAT_SMOTHING * 5);
+            smoothed_percent += BAT_SMOTHING * 2;
         }
         else if (percent < smoothed_percent)
         {

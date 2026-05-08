@@ -349,7 +349,7 @@ static int send_report(thread_report_t *report)
 void battery_update(void)
 {
     uint8_t last_battery_percent = battery_percent;
-    uint8_t battery_percent = get_battery();
+    battery_percent = get_battery();
     if (last_battery_percent != battery_percent)
     {
         bt_bas_set_battery_level(battery_percent);
@@ -510,6 +510,10 @@ void rgb_eff_kitt(void)
             v = v / 4;
         }
     }
+    if (rgb_beat == (NUM_LEDS * 2))
+    {
+        rgb_beat = 0;
+    }
 }
 #endif
 void rgb_effects_update(void)
@@ -531,11 +535,12 @@ static void rgb_timer_handler(struct k_timer *dummy)
 K_TIMER_DEFINE(rgb_periodic_timer, rgb_timer_handler, NULL);
 void rgb_start_periodic_task(void)
 {
-    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(50));
+    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(60));
 }
 void rgb_stop_periodic_task(void)
 {
     k_timer_stop(&rgb_periodic_timer);
+    rgb_beat = 0;
 }
 #endif
 #endif
@@ -671,6 +676,21 @@ void keyboard_sleep(void)
         gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
     }
 #endif
+}
+
+void keyboard_deep_sleep(void)
+{
+    if (current_conn)
+    {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+    ble_notify_enabled = false;
+    boot_notify_enabled = false;
+    protocol_mode = 0x01;
+    last_activity = -(SLEEP_TIMEOUT * 1000);
+    bt_le_adv_stop();
+    bt_disable();
 }
 
 /* ================================================= *\
@@ -1143,6 +1163,13 @@ static int release_key(uint16_t keycode, bool send)
             }
             return release_all();
             break;
+        }
+    case K_SPECIAL:
+        switch (keycode)
+        {
+        case HID_DEEP_SLEEP:
+            keyboard_deep_sleep();
+            return 0;
         }
     }
     last_activity = k_uptime_get_32();
