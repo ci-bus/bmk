@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Miguelio
+# SPDX-License-Identifier: MIT
+
+board_runner_args(nrfjprog "--nrf-family=NRF52")
+board_runner_args(pyocd "--target=nrf52833" "--frequency=4000000")
+
+include(${ZEPHYR_BASE}/boards/common/nrfjprog.board.cmake)
+include(${ZEPHYR_BASE}/boards/common/uf2.board.cmake)

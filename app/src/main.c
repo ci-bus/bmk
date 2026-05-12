@@ -1539,8 +1539,10 @@ int main(void)
 
     LOG_INF("BMK Keyboard starting...");
 
-    // nrf_power_dcdcen_vddh_set(NRF_POWER, true);
+// nrf_power_dcdcen_vddh_set(NRF_POWER, true);
+#if defined(CONFIG_SOC_NRF52840_QIAA)
     nrf_power_dcdcen_set(NRF_POWER, true);
+#endif
 
     err = settings_subsys_init();
     if (err)
