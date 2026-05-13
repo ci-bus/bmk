@@ -56,20 +56,24 @@ zephyr_udc0: &usbd {
         #address-cells = <1>;
         #size-cells = <1>;
 
-        sd_partition: partition@0 {
+        mbr_partition: partition@0 {
+            label = "mbr";
             reg = <0x00000000 0x00001000>;
         };
 
-        code_partition: partition@1000 {
-            reg = <0x00001000 0x000d3000>;
-        };
-		
-        storage_partition: partition@d4000 {
-            reg = <0x000d4000 0x00020000>;
+        code_partition: slot0_partition: partition@1000 {
+            label = "image-0";
+            reg = <0x00001000 0x0006f000>; /* Hasta la 0x70000 */
         };
 
-        boot_partition: partition@f4000 {
-            reg = <0x000f4000 0x0000c000>;
+        storage_partition: partition@70000 {
+            label = "storage";
+            reg = <0x00070000 0x00004000>; /* 16KB para datos */
+        };
+
+        bootloader_partition: partition@74000 {
+            label = "bootloader";
+            reg = <0x00074000 0x0000c000>; /* 48KB finales */
         };
     };
 };

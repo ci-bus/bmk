@@ -10,6 +10,8 @@
 #define POWER_EXT true
 #define RGB true
 #define BATTERY true
+#define SLEEP_TIMEOUT 300
+
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
 
