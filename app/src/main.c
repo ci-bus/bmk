@@ -519,7 +519,7 @@ void rgb_eff_kitt(void)
 void rgb_effects_update(void)
 {
     rgb_beat++;
-    rgb_eff_kitt();
+    rgb_eff_colors();
     led_strip_update_rgb(strip, pixels, NUM_LEDS);
 }
 static void rgb_work_handler(struct k_work *work)
@@ -645,7 +645,10 @@ void sleep_init(void)
 
 void keyboard_sleep(void)
 {
-    bt_le_adv_stop();
+    if (!current_conn)
+    {
+        start_slow_advertising();
+    }
 
 #if BATTERY
     bat_stop_periodic_task();
@@ -697,6 +700,22 @@ void keyboard_deep_sleep(void)
 |* ============= Connection Management ============= *|
 \* ================================================= */
 
+void reset_mac_and_identity(void)
+{
+    bt_le_adv_stop();
+    if (current_conn)
+    {
+        bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    }
+    int id = bt_id_create(NULL, NULL);
+    if (id < 0)
+    {
+        return;
+    }
+    struct bt_le_adv_param param = *BT_LE_ADV_CONN_FOREVER;
+    param.id = (uint8_t)id; // Forzamos la nueva identidad
+}
+
 void force_bluetooth_reset(void)
 {
 #if BATTERY
@@ -707,7 +726,7 @@ void force_bluetooth_reset(void)
         bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
     }
     bt_unpair(BT_ID_DEFAULT, NULL);
-    bt_le_adv_stop();
+    reset_mac_and_identity();
     start_advertising();
 }
 
