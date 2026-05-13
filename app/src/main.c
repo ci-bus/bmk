@@ -736,7 +736,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("BLE connected");
     current_conn = bt_conn_ref(conn);
 
-    k_work_reschedule(&security_work, K_MSEC(200));
+    k_work_reschedule(&security_work, K_MSEC(50));
 
 #if BATTERY
     bat_start_periodic_task();
@@ -1169,6 +1169,9 @@ static int release_key(uint16_t keycode, bool send)
         {
         case HID_DEEP_SLEEP:
             keyboard_deep_sleep();
+            return 0;
+        case HID_RESET:
+            sys_reboot(SYS_REBOOT_COLD);
             return 0;
         }
     }
