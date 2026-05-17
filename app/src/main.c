@@ -21,6 +21,7 @@ static uint8_t rgb_color = 0;
 static uint8_t rgb_light = 255;
 static uint8_t rgb_saturation = 255;
 static bool rgb_on = RGB_ON_STARTUP;
+static bool rgb_spi_suspended = false;
 #if RGB_EFFECTS
 static uint8_t rgb_beat = 0;
 #endif
@@ -60,6 +61,7 @@ static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static struct timeout_tapped_keys timeout_tapped_keys_data;
 static struct k_work_delayable security_work;
+static bool deep_sleeped = false;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
@@ -645,11 +647,6 @@ void sleep_init(void)
 
 void keyboard_sleep(void)
 {
-    if (!current_conn)
-    {
-        start_slow_advertising();
-    }
-
 #if BATTERY
     bat_stop_periodic_task();
 #endif
@@ -659,13 +656,17 @@ void keyboard_sleep(void)
 #if POWER_EXT
     gpio_pin_set_dt(&power_ext, 0);
 #endif
-#if RGB
-    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
 
-    for (int r = 0; r < MATRIX_ROWS; r++)
+    for (int r = (MATRIX_ROWS - 1); r >= 0; r--)
     {
-        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_RISING);
+        if (r >= MATRIX_ROWS - 8)
+        {
+            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_TO_ACTIVE);
+        }
+        else
+        {
+            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
+        }
     }
 
     for (int c = 0; c < MATRIX_COLS; c++)
@@ -683,6 +684,10 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
+#if RGB
+    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
+    rgb_spi_suspended = true;
+#endif
     if (current_conn)
     {
         bt_conn_unref(current_conn);
@@ -694,6 +699,7 @@ void keyboard_deep_sleep(void)
     last_activity = -(SLEEP_TIMEOUT * 1000);
     bt_le_adv_stop();
     bt_disable();
+    deep_sleeped = true;
 }
 
 /* ================================================= *\
@@ -702,18 +708,13 @@ void keyboard_deep_sleep(void)
 
 void reset_mac_and_identity(void)
 {
-    bt_le_adv_stop();
-    if (current_conn)
-    {
-        bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-    }
     int id = bt_id_create(NULL, NULL);
     if (id < 0)
     {
         return;
     }
     struct bt_le_adv_param param = *BT_LE_ADV_CONN_FOREVER;
-    param.id = (uint8_t)id; // Forzamos la nueva identidad
+    param.id = (uint8_t)id;
 }
 
 void force_bluetooth_reset(void)
@@ -721,6 +722,7 @@ void force_bluetooth_reset(void)
 #if BATTERY
     bat_stop_periodic_task();
 #endif
+    bt_le_adv_stop();
     if (current_conn)
     {
         bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -778,6 +780,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         if (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN || reason == BT_HCI_ERR_REMOTE_POWER_OFF || reason == BT_HCI_ERR_LOCALHOST_TERM_CONN)
         {
             last_activity = -(SLEEP_TIMEOUT * 1000);
+            keyboard_deep_sleep();
         }
     }
 }
@@ -834,14 +837,29 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 |* ======================= WAKE UP ======================= *|
 \* ======================================================= */
 
-void keyboard_wakeup(void)
+int keyboard_deep_sleep_wakeup(void)
 {
-    if (current_conn == NULL)
+    int err = bt_enable(NULL);
+    if (err)
     {
-        sys_reboot(SYS_REBOOT_COLD);
-        return;
+        return err;
     }
 
+    bt_conn_auth_cb_register(&auth_cb);
+    bt_conn_auth_info_cb_register(&auth_info_cb);
+
+#if IS_ENABLED(CONFIG_SETTINGS)
+    settings_load();
+#endif
+
+    start_advertising();
+    deep_sleeped = false;
+
+    return 0;
+}
+
+void keyboard_wakeup(void)
+{
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
         gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
@@ -865,7 +883,11 @@ void keyboard_wakeup(void)
     rgb_power_ext_update();
 #endif
 #if RGB
-    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
+    if (rgb_spi_suspended)
+    {
+        pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
+        rgb_spi_suspended = false;
+    }
 #endif
 #if RGB_EFFECTS
     rgb_start_periodic_task();
@@ -873,6 +895,14 @@ void keyboard_wakeup(void)
 #if BATTERY
     bat_start_periodic_task();
 #endif
+    if (deep_sleeped)
+    {
+        int err = keyboard_deep_sleep_wakeup();
+        if (err)
+        {
+            sys_reboot(SYS_REBOOT_COLD);
+        }
+    }
 }
 
 /* ======================================================= *\
@@ -967,6 +997,7 @@ static int release_all()
 
 static int press_key(uint16_t keycode)
 {
+    last_activity = k_uptime_get_32();
     uint8_t idx = 0;
     switch (keycode & 0xF000)
     {
@@ -1077,21 +1108,21 @@ static int press_key(uint16_t keycode)
             break;
         case HID_KEY_RGB_ON:
             rgb_on = true;
-#if POWER_EXT_RGB_LINKED
+#if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
 #endif
             rgb_power_ext_update();
             break;
         case HID_KEY_RGB_OFF:
             rgb_on = false;
-#if POWER_EXT_RGB_LINKED
+#if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
 #endif
             rgb_power_ext_update();
             break;
         case HID_KEY_RGB_TOGGLE:
             rgb_on = !rgb_on;
-#if POWER_EXT_RGB_LINKED
+#if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
 #endif
             rgb_power_ext_update();
@@ -1100,15 +1131,22 @@ static int press_key(uint16_t keycode)
         case HID_BT_CLEAR:
             force_bluetooth_reset();
             break;
+        case HID_RESET:
+            sys_reboot(SYS_REBOOT_COLD);
+            break;
+        case HID_BOOT:
+            nrf_power_gpregret_set(NRF_POWER, 0, 0x57);
+            sys_reboot(SYS_REBOOT_COLD);
+            break;
         }
         break;
     }
-    last_activity = k_uptime_get_32();
     return idx;
 }
 
 static int release_key(uint16_t keycode, bool send)
 {
+    last_activity = k_uptime_get_32();
     uint8_t idx = 0;
     switch (keycode & 0xF000)
     {
@@ -1189,13 +1227,15 @@ static int release_key(uint16_t keycode, bool send)
         case HID_DEEP_SLEEP:
             keyboard_deep_sleep();
             return 0;
-        case HID_RESET:
-            sys_reboot(SYS_REBOOT_COLD);
-            return 0;
         }
     }
     last_activity = k_uptime_get_32();
     return idx;
+}
+
+bool some_pressed_key(void)
+{
+    return (bool)(report[1] || report[3] || report[4] || report[5] || report[6] || report[7] || report[8]);
 }
 
 /* ================================================ *\
@@ -1632,7 +1672,7 @@ int main(void)
 
     while (1)
     {
-        if (k_uptime_get_32() - last_activity > SLEEP_TIMEOUT * 1000)
+        if ((k_uptime_get_32() - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key())
         {
             keyboard_sleep();
             while (k_sem_take(&sleep_sem, K_NO_WAIT) == 0)
