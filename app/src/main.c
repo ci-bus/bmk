@@ -40,6 +40,9 @@ struct k_thread send_thread_data;
 
 K_MSGQ_DEFINE(report_msgq, sizeof(thread_report_t), SEND_THREAD_CACHE_SIZE, 4);
 
+static uint8_t cols_pins[MATRIX_COLS] = {0};
+static uint8_t rows_pins[MATRIX_ROWS] = {0};
+
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 #if ENCODERS
 static struct encoder_key encoder_keys[ENCODERS] = {0};
@@ -1249,6 +1252,8 @@ int pins_init(void)
             LOG_ERR("Col %d config failed (err %d)", c, err);
             return err;
         }
+
+        cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
     }
 
     for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1264,6 +1269,8 @@ int pins_init(void)
             LOG_ERR("Row %d config failed (err %d)", r, err);
             return err;
         }
+        
+        rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
     }
 
 #if ENCODERS
@@ -1383,7 +1390,7 @@ void matrix_scan()
     for (int c = 0; c < MATRIX_COLS; c++)
     {
         /* Drive this column high */
-        gpio_pin_set_dt(&cols[c], 1);
+        nrf_gpio_pin_set(cols_pins[c]);
 
         /* Read all rows */
         for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1400,7 +1407,7 @@ void matrix_scan()
             // Gey keycode
             uint16_t keycode = keys[idx].kc[layer];
             // If row is high
-            if (gpio_pin_get_dt(&rows[r]))
+            if (nrf_gpio_pin_read(rows_pins[r]))
             {
                 if (!keys[idx].pressed)
                 {
@@ -1477,7 +1484,7 @@ void matrix_scan()
         }
 
         /* Drive column low again */
-        gpio_pin_set_dt(&cols[c], 0);
+        nrf_gpio_pin_clear(cols_pins[c]);
     }
 
 #if ENCODERS
