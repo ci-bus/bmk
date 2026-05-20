@@ -28,11 +28,11 @@
 #ifndef SLEEP_TIMEOUT
 #define SLEEP_TIMEOUT 5
 #endif
-#ifndef TAP_HOLD_DELAY
-#define TAP_HOLD_DELAY 200
+#ifndef TAP_HOLD_PRESS_DELAY
+#define TAP_HOLD_PRESS_DELAY 200
 #endif
-#ifndef SECOND_TAP_DELAY
-#define SECOND_TAP_DELAY 25
+#ifndef TAP_HOLD_RELEASE_DELAY
+#define TAP_HOLD_RELEASE_DELAY 150
 #endif
 #ifndef TAP_HOLD_SIZE_ARRAY
 #define TAP_HOLD_SIZE_ARRAY 3
@@ -92,19 +92,14 @@
 #define BATTERY true
 #endif
 
-typedef enum
-{
-    RELEASED = 0,
-    PRESSED = 1,
-    HELD = 2,
-    TAPPED = 3,
-} bmk_key_status_t;
-
 struct key
 {
     uint16_t kc[LAYERS];
-    bmk_key_status_t status;
+    bool pressed;
+    bool tapped;
     uint8_t debounce_count;
+    uint8_t delay_press_count;
+    uint8_t delay_release_count;
 };
 
 struct encoder_key

@@ -7,11 +7,11 @@
 #define MATRIX_ROWS 9
 #define LAYERS 2
 #define ENCODERS 1
-#define POWER_EXT true
-#define RGB true
+#define POWER_EXT false
+#define RGB false
 #define RGB_EFFECTS false
 #define BATTERY true
-#define SLEEP_TIMEOUT 3
+#define SLEEP_TIMEOUT 300
 #define DEBOUNCE_PRESS 5
 #define DEBOUNCE_RELEASE 15
 

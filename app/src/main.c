@@ -54,12 +54,11 @@ static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
 static int32_t last_activity = 0;
 
-static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_delay, second_tap_delay;
+static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_p, tap_hold_r;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
-static struct timeout_tapped_keys timeout_tapped_keys_data;
 static struct k_work_delayable security_work;
 static bool deep_sleeped = false;
 
@@ -100,8 +99,8 @@ static void debounce_init(void)
     debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / CYCLE_DELAY;
     debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    tap_hold_delay = TAP_HOLD_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    second_tap_delay = SECOND_TAP_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    tap_hold_p = TAP_HOLD_PRESS_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    tap_hold_r = TAP_HOLD_RELEASE_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
 }
 
 static void reports_init(void)
@@ -942,26 +941,17 @@ static void held_mod_keys_to_report(void)
 {
     for (uint8_t i = 0; i < TAP_HOLD_SIZE_ARRAY; i++)
     {
-        if (held_mod_keys[i].idx != 0)
+        uint8_t idx = held_mod_keys[i].idx;
+        uint8_t layer = held_mod_keys[i].layer;
+        if (idx != 0)
         {
-            uint16_t keycode = (uint16_t)(keys[held_mod_keys[i].idx].kc[held_mod_keys[i].layer] >> 8);
+            uint16_t keycode = (uint16_t)(keys[idx].kc[layer] >> 8);
             report[1] |= modifier_bit(keycode);
-            keys[held_mod_keys[i].idx].status = PRESSED;
             held_mod_keys[i] = (held_mod_key_t){0};
+            keys[idx].delay_press_count = tap_hold_p + 1;
         }
     }
     some_held_mod_keys = false;
-}
-
-static void tapped_key_release_delayer(struct k_work *work)
-{
-    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    struct timeout_tapped_keys *ctx = CONTAINER_OF(dwork, struct timeout_tapped_keys, dwork);
-    uint8_t idx = ctx->key_idx;
-    if (keys[idx].status == TAPPED)
-    {
-        keys[idx].status = RELEASED;
-    }
 }
 
 static bool add_report_to_send(bmk_report_type_t type)
@@ -1311,6 +1301,82 @@ int pins_init(void)
     return 0;
 }
 
+// Tap hold functions
+
+void press_tap_hold(uint8_t idx, uint16_t keycode)
+{
+    add_held_mod_keys(idx);
+    keys[idx].pressed = true;
+    keys[idx].debounce_count = 0;
+}
+
+void press_delay_tap_hold(uint8_t idx, uint16_t keycode)
+{
+    if (keys[idx].delay_press_count == tap_hold_p)
+    {
+        remove_held_mod_keys(idx);
+        keycode = keys[idx].tapped
+                      ? (uint16_t)(keycode & 0xFF)
+                      : (uint16_t)(keycode >> 8);
+        release_key(keycode, false);
+        int res = press_key(keycode);
+        if (res != -1)
+        {
+            keys[idx].delay_press_count = tap_hold_p + 1;
+        }
+    }
+    else if (keys[idx].delay_press_count < tap_hold_p)
+    {
+        keys[idx].delay_press_count++;
+    }
+}
+
+void reset_tap_hold(uint8_t idx)
+{
+    keys[idx].pressed = false;
+    keys[idx].debounce_count = 0;
+    keys[idx].delay_press_count = 0;
+    keys[idx].delay_release_count = 0;
+}
+
+void release_tap_hold(uint8_t idx, uint16_t keycode)
+{
+    if (keys[idx].delay_press_count > tap_hold_p)
+    {
+        keycode = keys[idx].tapped
+                      ? (uint16_t)(keycode & 0xFF)
+                      : (uint16_t)(keycode >> 8);
+        release_key(keycode, true);
+        keys[idx].tapped = false;
+        reset_tap_hold(idx);
+    }
+    else
+    {
+        remove_held_mod_keys(idx);
+        keycode = (uint16_t)(keycode & 0xFF);
+        int res = press_key(keycode);
+        if (res != -1)
+        {
+            release_key(keycode, true);
+            keys[idx].tapped = true;
+            reset_tap_hold(idx);
+        }
+    }
+}
+
+void release_delay_tap_hold(uint8_t idx, uint16_t keycode)
+{
+    if (keys[idx].tapped)
+    {
+        keys[idx].delay_release_count++;
+        if (keys[idx].delay_release_count == tap_hold_r)
+        {
+            keys[idx].tapped = false;
+            keys[idx].delay_release_count = 0;
+        }
+    }
+}
+
 void matrix_scan()
 {
     uint8_t idx = 0;
@@ -1318,9 +1384,6 @@ void matrix_scan()
     {
         /* Drive this column high */
         gpio_pin_set_dt(&cols[c], 1);
-
-        /* Short delay for signal to settle */
-        k_busy_wait(5);
 
         /* Read all rows */
         for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1339,50 +1402,23 @@ void matrix_scan()
             // If row is high
             if (gpio_pin_get_dt(&rows[r]))
             {
-                if (keys[idx].status != PRESSED)
+                if (!keys[idx].pressed)
                 {
-                    if (keys[idx].debounce_count > debounce_p)
+                    if (keys[idx].debounce_count == debounce_p)
                     {
-                        // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
-                            // Use debounce_count to know when do hold key
-                            if (keys[idx].debounce_count > tap_hold_delay)
-                            {
-                                keycode = (uint16_t)(keycode >> 8);
-                                remove_held_mod_keys(idx);
-                            }
-                            // Second fast tap key
-                            else if (keys[idx].status == TAPPED)
-                            {
-                                if (keys[idx].debounce_count > debounce_p + second_tap_delay)
-                                {
-                                    keycode = (uint16_t)(keycode & 0xFF);
-                                }
-                                else
-                                {
-                                    keys[idx].debounce_count++;
-                                    continue;
-                                }
-                            }
-                            else
-                            {
-                                if (keys[idx].status != HELD)
-                                {
-                                    keys[idx].status = HELD;
-                                    add_held_mod_keys(idx);
-                                }
-                                keys[idx].debounce_count++;
-                                continue;
-                            }
+                            press_tap_hold(idx, keycode);
                         }
-                        // Press key without duplicates
-                        release_key(keycode, false);
-                        int res = press_key(keycode);
-                        if (res != -1)
+                        else
                         {
-                            keys[idx].status = PRESSED;
-                            keys[idx].debounce_count = 0;
+                            release_key(keycode, false);
+                            int res = press_key(keycode);
+                            if (res != -1)
+                            {
+                                keys[idx].pressed = true;
+                                keys[idx].debounce_count = 0;
+                            }
                         }
                     }
                     else
@@ -1395,53 +1431,29 @@ void matrix_scan()
                     if (keys[idx].debounce_count != 0)
                     {
                         keys[idx].debounce_count--;
+                    }
+
+                    if ((keycode & 0xF000) == K_TAP_HOLD)
+                    {
+                        press_delay_tap_hold(idx, keycode);
                     }
                 }
             }
             else
             {
-                if (keys[idx].status == PRESSED)
+                if (keys[idx].pressed)
                 {
-                    if (keys[idx].debounce_count > debounce_r)
+                    if (keys[idx].debounce_count == debounce_r)
                     {
-                        // Tap hold keys
                         if ((keycode & 0xF000) == K_TAP_HOLD)
                         {
-                            release_key((uint16_t)(keycode & 0xFF), false);
-                            keycode = (uint16_t)(keycode >> 8);
+                            release_tap_hold(idx, keycode);
                         }
-                        int res = release_key(keycode, true);
-                        if (res != -1)
-                        {
-                            keys[idx].status = RELEASED;
-                            keys[idx].debounce_count = 0;
-                        }
-                    }
-                    else
-                    {
-                        keys[idx].debounce_count++;
-                    }
-                }
-                else if (keys[idx].status == HELD) // Tap hold keys
-                {
-                    if (keys[idx].debounce_count > debounce_r)
-                    {
-                        keys[idx].debounce_count = 0;
-                        continue;
-                    }
-                    else if (keys[idx].debounce_count == debounce_r)
-                    {
-                        remove_held_mod_keys(idx);
-                        // Do tap key (press and release)
-                        keycode = (uint16_t)(keycode & 0xFF);
-                        int res = press_key(keycode);
-                        if (res != -1)
+                        else
                         {
                             release_key(keycode, true);
-                            keys[idx].status = TAPPED;
+                            keys[idx].pressed = false;
                             keys[idx].debounce_count = 0;
-                            timeout_tapped_keys_data.key_idx = idx;
-                            k_work_reschedule(&timeout_tapped_keys_data.dwork, K_MSEC(TAP_HOLD_DELAY));
                         }
                     }
                     else
@@ -1454,6 +1466,11 @@ void matrix_scan()
                     if (keys[idx].debounce_count != 0)
                     {
                         keys[idx].debounce_count--;
+                    }
+
+                    if ((keycode & 0xF000) == K_TAP_HOLD)
+                    {
+                        release_delay_tap_hold(idx, keycode);
                     }
                 }
             }
@@ -1589,7 +1606,6 @@ k_tid_t threads_init()
 void delayed_init(void)
 {
     k_work_init_delayable(&security_work, security_work_handler);
-    k_work_init_delayable(&timeout_tapped_keys_data.dwork, tapped_key_release_delayer);
 #if RGB || POWER_EXT
     k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
 #endif
