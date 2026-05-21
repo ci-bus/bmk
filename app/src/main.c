@@ -659,21 +659,15 @@ void keyboard_sleep(void)
     gpio_pin_set_dt(&power_ext, 0);
 #endif
 
-    for (int r = (MATRIX_ROWS - 1); r >= 0; r--)
-    {
-        if (r >= MATRIX_ROWS - 8)
-        {
-            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_TO_ACTIVE);
-        }
-        else
-        {
-            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
-        }
-    }
-
     for (int c = 0; c < MATRIX_COLS; c++)
     {
-        gpio_pin_set_dt(&cols[c], 1);
+        nrf_gpio_cfg_output(cols_pins[c]);
+        nrf_gpio_pin_set(cols_pins[c]);
+    }
+
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_ACTIVE);
     }
 
 #if ENCODERS
@@ -951,7 +945,7 @@ static void held_mod_keys_to_report(void)
             uint16_t keycode = (uint16_t)(keys[idx].kc[layer] >> 8);
             report[1] |= modifier_bit(keycode);
             held_mod_keys[i] = (held_mod_key_t){0};
-            keys[idx].delay_press_count = tap_hold_p + 1;
+            keys[idx].held = true;
         }
     }
     some_held_mod_keys = false;
@@ -1269,7 +1263,7 @@ int pins_init(void)
             LOG_ERR("Row %d config failed (err %d)", r, err);
             return err;
         }
-        
+
         rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
     }
 
@@ -1329,7 +1323,7 @@ void press_delay_tap_hold(uint8_t idx, uint16_t keycode)
         int res = press_key(keycode);
         if (res != -1)
         {
-            keys[idx].delay_press_count = tap_hold_p + 1;
+            keys[idx].held = true;
         }
     }
     else if (keys[idx].delay_press_count < tap_hold_p)
@@ -1341,6 +1335,7 @@ void press_delay_tap_hold(uint8_t idx, uint16_t keycode)
 void reset_tap_hold(uint8_t idx)
 {
     keys[idx].pressed = false;
+    keys[idx].held = false;
     keys[idx].debounce_count = 0;
     keys[idx].delay_press_count = 0;
     keys[idx].delay_release_count = 0;
@@ -1348,7 +1343,7 @@ void reset_tap_hold(uint8_t idx)
 
 void release_tap_hold(uint8_t idx, uint16_t keycode)
 {
-    if (keys[idx].delay_press_count > tap_hold_p)
+    if (keys[idx].held)
     {
         keycode = keys[idx].tapped
                       ? (uint16_t)(keycode & 0xFF)

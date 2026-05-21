@@ -29,7 +29,7 @@
 #define SLEEP_TIMEOUT 5
 #endif
 #ifndef TAP_HOLD_PRESS_DELAY
-#define TAP_HOLD_PRESS_DELAY 200
+#define TAP_HOLD_PRESS_DELAY 175
 #endif
 #ifndef TAP_HOLD_RELEASE_DELAY
 #define TAP_HOLD_RELEASE_DELAY 150
@@ -97,6 +97,7 @@ struct key
     uint16_t kc[LAYERS];
     bool pressed;
     bool tapped;
+    bool held;
     uint8_t debounce_count;
     uint8_t delay_press_count;
     uint8_t delay_release_count;
