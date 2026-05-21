@@ -659,15 +659,16 @@ void keyboard_sleep(void)
     gpio_pin_set_dt(&power_ext, 0);
 #endif
 
-    for (int c = 0; c < MATRIX_COLS; c++)
+    for (int r = (MATRIX_ROWS - 1); r >= 0; r--)
     {
-        nrf_gpio_cfg_output(cols_pins[c]);
-        nrf_gpio_pin_set(cols_pins[c]);
-    }
-
-    for (int r = 0; r < MATRIX_ROWS; r++)
-    {
-        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_ACTIVE);
+        if (r >= MATRIX_ROWS - 8)
+        {
+            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_TO_ACTIVE);
+        }
+        else
+        {
+            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
+        }
     }
 
 #if ENCODERS
@@ -676,6 +677,11 @@ void keyboard_sleep(void)
         gpio_pin_interrupt_configure_dt(&encoders[e], GPIO_INT_LEVEL_LOW);
     }
 #endif
+
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        nrf_gpio_pin_set(cols_pins[c]);
+    }
 }
 
 void keyboard_deep_sleep(void)
@@ -856,6 +862,11 @@ int keyboard_deep_sleep_wakeup(void)
 
 void keyboard_wakeup(void)
 {
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        gpio_pin_set_dt(&cols[c], 0);
+    }
+
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
         gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_DISABLE);
@@ -869,11 +880,6 @@ void keyboard_wakeup(void)
         gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
     }
 #endif
-
-    for (int c = 0; c < MATRIX_COLS; c++)
-    {
-        gpio_pin_set_dt(&cols[c], 0);
-    }
 
 #if RGB || POWER_EXT
     rgb_power_ext_update();

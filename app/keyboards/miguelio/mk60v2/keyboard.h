@@ -11,10 +11,9 @@
 #define RGB false
 #define RGB_EFFECTS false
 #define BATTERY true
-#define SLEEP_TIMEOUT 300
+#define SLEEP_TIMEOUT 60
 #define DEBOUNCE_PRESS 5
 #define DEBOUNCE_RELEASE 15
-
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
 
