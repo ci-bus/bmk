@@ -1308,7 +1308,7 @@ int pins_init(void)
     return 0;
 }
 
-// Tap hold functions
+// Tap hold functions //
 
 void press_tap_hold(uint8_t idx, uint16_t keycode)
 {
@@ -1319,7 +1319,7 @@ void press_tap_hold(uint8_t idx, uint16_t keycode)
 
 void press_delay_tap_hold(uint8_t idx, uint16_t keycode)
 {
-    if (keys[idx].delay_press_count == tap_hold_p)
+    if (keys[idx].delay_press_count == tap_hold_p && !keys[idx].held)
     {
         remove_held_mod_keys(idx);
         keycode = keys[idx].tapped
