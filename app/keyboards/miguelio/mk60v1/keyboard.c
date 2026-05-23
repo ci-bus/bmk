@@ -6,7 +6,7 @@
 #define COL5_PIN P1(13)
 #endif
 
-const uint16_t cols[MATRIX_COLS] = {
+const uint16_t pin_cols[MATRIX_COLS] = {
     P0(28),
     P0(22),
     P0(31),
@@ -17,7 +17,7 @@ const uint16_t cols[MATRIX_COLS] = {
     P1(11),
 };
 
-const uint16_t rows[MATRIX_ROWS] = {
+const uint16_t pin_rows[MATRIX_ROWS] = {
     P0(13),
     P0(24),
     P0(10),
@@ -29,9 +29,9 @@ const uint16_t rows[MATRIX_ROWS] = {
     P1(6),
 };
 
-const uint16_t encoders[ENCODERS * ENCODER_PINS] = {
+const uint16_t pin_encoders[ENCODERS * ENCODER_PINS] = {
     P0(6),
     P0(5),
 };
 
-const uint16_t power_ext = P1(9);
+const uint16_t pin_power_ext = P1(9);
