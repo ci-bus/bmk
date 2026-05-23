@@ -31,10 +31,13 @@
 
 #define ENCODER_PINS 2
 
-extern const struct gpio_dt_spec cols[];
-extern const struct gpio_dt_spec rows[];
-extern const struct gpio_dt_spec encoders[ENCODER_PINS];
-extern const struct gpio_dt_spec power_ext;
+#define P0(pin) (0x0000 | (pin & 0xFF))
+#define P1(pin) (0x0100 | (pin & 0xFF))
+
+extern const uint16_t pin_cols[];
+extern const uint16_t pin_rows[];
+extern const uint16_t pin_encoders[ENCODER_PINS];
+extern const uint16_t pin_power_ext;
 
 #define GPIO0 DEVICE_DT_GET(DT_NODELABEL(gpio0))
 #define GPIO1 DEVICE_DT_GET(DT_NODELABEL(gpio1))

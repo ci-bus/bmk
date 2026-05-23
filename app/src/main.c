@@ -8,6 +8,11 @@
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
 
+static struct gpio_dt_spec cols[MATRIX_COLS] = {0};
+static struct gpio_dt_spec rows[MATRIX_ROWS] = {0};
+static struct gpio_dt_spec encoders[ENCODER_PINS] = {0};
+static struct gpio_dt_spec power_ext = {0};
+
 #if RGB
 #define STRIP_NODE DT_NODELABEL(ws2812)
 #define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
@@ -37,8 +42,8 @@ struct k_thread send_thread_data;
 
 K_MSGQ_DEFINE(report_msgq, sizeof(thread_report_t), SEND_THREAD_CACHE_SIZE, 4);
 
-static uint8_t cols_pins[MATRIX_COLS] = {0};
-static uint8_t rows_pins[MATRIX_ROWS] = {0};
+static uint8_t abs_cols_pins[MATRIX_COLS] = {0};
+static uint8_t abs_rows_pins[MATRIX_ROWS] = {0};
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
 #if ENCODERS
@@ -691,7 +696,7 @@ void keyboard_sleep(void)
 
     for (int c = 0; c < MATRIX_COLS; c++)
     {
-        nrf_gpio_pin_set(cols_pins[c]);
+        nrf_gpio_pin_set(abs_cols_pins[c]);
     }
 }
 
@@ -1248,6 +1253,43 @@ bool some_pressed_key(void)
 |* ==================== MATRIX ==================== *|
 \* ================================================ */
 
+void magic_init()
+{
+    for (int c = 0; c < MATRIX_COLS; c++)
+    {
+        cols[c] = (struct gpio_dt_spec){
+            .port = ((pin_cols[c] >> 8) ? GPIO1 : GPIO0),
+            .pin = (gpio_pin_t)(pin_cols[c] & 0xFF),
+            .dt_flags = GPIO_ACTIVE_HIGH,
+        };
+    }
+    for (int r = 0; r < MATRIX_ROWS; r++)
+    {
+        rows[r] = (struct gpio_dt_spec){
+            .port = ((pin_rows[r] >> 8) ? GPIO1 : GPIO0),
+            .pin = (gpio_pin_t)(pin_rows[r] & 0xFF),
+            .dt_flags = GPIO_ACTIVE_HIGH,
+        };
+    }
+#if ENCODERS
+    for (int e = 0; e < ENCODERS * ENCODER_PINS; e++)
+    {
+        encoders[e] = (struct gpio_dt_spec){
+            .port = ((pin_encoders[e] >> 8) ? GPIO1 : GPIO0),
+            .pin = (gpio_pin_t)(pin_encoders[e] & 0xFF),
+            .dt_flags = GPIO_ACTIVE_LOW,
+        };
+    }
+#endif
+#if POWER_EXT
+    power_ext = (struct gpio_dt_spec){
+        .port = ((pin_power_ext >> 8) ? GPIO1 : GPIO0),
+        .pin = (gpio_pin_t)(pin_power_ext & 0xFF),
+        .dt_flags = GPIO_ACTIVE_LOW,
+    };
+#endif
+}
+
 int pins_init(void)
 {
     int err;
@@ -1265,12 +1307,14 @@ int pins_init(void)
             LOG_ERR("Col %d config failed (err %d)", c, err);
             return err;
         }
-
-        cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
+        abs_cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
     }
 
     for (int r = 0; r < MATRIX_ROWS; r++)
     {
+        rows[r].pin = pin_rows[r] & 0xFF;
+        rows[r].port = (pin_rows[r] >> 8) ? GPIO1 : GPIO0;
+        rows[r].dt_flags = GPIO_ACTIVE_HIGH;
         if (!gpio_is_ready_dt(&rows[r]))
         {
             LOG_ERR("Row %d GPIO not ready", r);
@@ -1282,8 +1326,7 @@ int pins_init(void)
             LOG_ERR("Row %d config failed (err %d)", r, err);
             return err;
         }
-
-        rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
+        abs_rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
     }
 
 #if ENCODERS
@@ -1304,6 +1347,9 @@ int pins_init(void)
 #endif
 
 #if POWER_EXT
+    power_ext.pin = pin_power_ext & 0xFF;
+    power_ext.port = (pin_power_ext >> 8) ? GPIO1 : GPIO0;
+    power_ext.dt_flags = GPIO_ACTIVE_HIGH;
     if (!gpio_is_ready_dt(&power_ext))
     {
         LOG_ERR("External power GPIO not ready");
@@ -1404,7 +1450,7 @@ void matrix_scan()
     for (int c = 0; c < MATRIX_COLS; c++)
     {
         /* Drive this column high */
-        nrf_gpio_pin_set(cols_pins[c]);
+        nrf_gpio_pin_set(abs_cols_pins[c]);
 
         /* Read all rows */
         for (int r = 0; r < MATRIX_ROWS; r++)
@@ -1421,7 +1467,7 @@ void matrix_scan()
             // Gey keycode
             uint16_t keycode = keys[idx].kc[layer];
             // If row is high
-            if (nrf_gpio_pin_read(rows_pins[r]))
+            if (nrf_gpio_pin_read(abs_rows_pins[r]))
             {
                 if (!keys[idx].pressed)
                 {
@@ -1498,7 +1544,7 @@ void matrix_scan()
         }
 
         /* Drive column low again */
-        nrf_gpio_pin_clear(cols_pins[c]);
+        nrf_gpio_pin_clear(abs_cols_pins[c]);
     }
 
 #if ENCODERS
@@ -1649,6 +1695,7 @@ int main(void)
         LOG_ERR("Error to init settings subsistem (err %d)", err);
     }
 
+    magic_init();
     delayed_init();
 
     err = bt_enable(NULL);
