@@ -67,7 +67,8 @@ static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static struct k_work_delayable security_work;
-static bool deep_sleeped = false;
+static bool sleeping = false;
+static bool deep_sleep = false;
 
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
@@ -349,25 +350,6 @@ static void rgb_spi_on(void)
 /* ================================================ *\
 |* ===================== USB ====================== *|
 \* ================================================ */
-
-static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
-{
-    switch (status)
-    {
-    case USB_DC_CONFIGURED:
-        break;
-    case USB_DC_CONNECTED:
-        usb_connected = true;
-        break;
-    case USB_DC_DISCONNECTED:
-        usb_connected = false;
-        break;
-    case USB_DC_SUSPEND:
-        break;
-    default:
-        break;
-    }
-}
 
 static void usb_int_in_ready(const struct device *dev)
 {
@@ -698,6 +680,7 @@ void keyboard_sleep(void)
     {
         nrf_gpio_pin_set(abs_cols_pins[c]);
     }
+    sleeping = true;
 }
 
 void keyboard_deep_sleep(void)
@@ -713,7 +696,7 @@ void keyboard_deep_sleep(void)
     last_activity = -(SLEEP_TIMEOUT * 1000);
     bt_le_adv_stop();
     bt_disable();
-    deep_sleeped = true;
+    deep_sleep = true;
 }
 
 /* ================================================= *\
@@ -867,7 +850,7 @@ int keyboard_deep_sleep_wakeup(void)
 #endif
 
     start_advertising();
-    deep_sleeped = false;
+    deep_sleep = false;
 
     return 0;
 }
@@ -902,13 +885,39 @@ void keyboard_wakeup(void)
 #if BATTERY
     bat_start_periodic_task();
 #endif
-    if (deep_sleeped)
+    if (deep_sleep)
     {
         int err = keyboard_deep_sleep_wakeup();
         if (err)
         {
             sys_reboot(SYS_REBOOT_COLD);
         }
+    }
+    sleeping = false;
+}
+
+/* ==================== USB CALLBACK ==================== */
+
+static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
+{
+    switch (status)
+    {
+    case USB_DC_CONFIGURED:
+        break;
+    case USB_DC_CONNECTED:
+        usb_connected = true;
+        if (sleeping) {
+            k_sem_give(&sleep_sem);
+        }
+        break;
+    case USB_DC_DISCONNECTED:
+        last_activity = k_uptime_get_32();
+        usb_connected = false;
+        break;
+    case USB_DC_SUSPEND:
+        break;
+    default:
+        break;
     }
 }
 

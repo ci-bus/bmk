@@ -9,6 +9,9 @@
 #define ENCODERS 1
 #define POWER_EXT true
 #define RGB true
+#define RGB_PORT 0
+#define RGB_PIN 26
+#define RGB_LEDS 15
 #define BATTERY true
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];

@@ -3,15 +3,15 @@
 &pinctrl {
     spi3_default: spi3_default {
         group1 {
-            psels = <NRF_PSEL(SPIM_SCK, 0, 18)>, // 0.18 free pinout
-                    <NRF_PSEL(SPIM_MOSI, 0, 26)>;
+            psels = <NRF_PSEL(SPIM_SCK, 0, 18)>,
+                    <NRF_PSEL(SPIM_MOSI, RGB_PORT, RGB_PIN)>;
         };
     };
 
     spi3_sleep: spi3_sleep {
         group1 {
             psels = <NRF_PSEL(SPIM_SCK, 0, 18)>,
-                    <NRF_PSEL(SPIM_MOSI, 0, 26)>;
+                    <NRF_PSEL(SPIM_MOSI, RGB_PORT, RGB_PIN)>;
             low-power-enable;
         };
     };
@@ -31,7 +31,7 @@
 
         spi-max-frequency = <4000000>;
 
-        chain-length = <15>;
+        chain-length = <RGB_LEDS>;
         color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
 
         spi-one-frame = <0x70>;
