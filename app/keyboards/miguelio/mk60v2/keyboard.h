@@ -7,8 +7,8 @@
 #define MATRIX_ROWS 9
 #define LAYERS 2
 #define ENCODERS 1
-#define POWER_EXT false
-#define RGB false
+#define POWER_EXT true
+#define RGB true
 #define RGB_EFFECTS false
 #define BATTERY true
 #define SLEEP_TIMEOUT 60

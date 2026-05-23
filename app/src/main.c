@@ -133,7 +133,201 @@ static void keymap_init(void)
 #endif
 }
 
-/* ==================== USB HID ==================== */
+/* ================================================ *\
+|* ===================== RGB ====================== *|
+\* ================================================ */
+
+#if RGB
+struct led_rgb hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v)
+{
+    struct led_rgb rgb;
+    uint8_t region, remainder, p, q, t;
+
+    if (s == 0)
+    {
+        rgb.r = rgb.g = rgb.b = v;
+        return rgb;
+    }
+
+    region = h / 43;
+    remainder = (h % 43) * 6;
+
+    p = (v * (255 - s)) >> 8;
+    q = (v * (255 - ((s * remainder) >> 8))) >> 8;
+    t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8;
+
+    switch (region)
+    {
+    case 0:
+        rgb.r = v;
+        rgb.g = t;
+        rgb.b = p;
+        break;
+    case 1:
+        rgb.r = q;
+        rgb.g = v;
+        rgb.b = p;
+        break;
+    case 2:
+        rgb.r = p;
+        rgb.g = v;
+        rgb.b = t;
+        break;
+    case 3:
+        rgb.r = p;
+        rgb.g = q;
+        rgb.b = v;
+        break;
+    case 4:
+        rgb.r = t;
+        rgb.g = p;
+        rgb.b = v;
+        break;
+    default:
+        rgb.r = v;
+        rgb.g = p;
+        rgb.b = q;
+        break;
+    }
+    return rgb;
+}
+
+static void hsv_to_leds(uint8_t h, uint8_t s, uint8_t v)
+{
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        pixels[i] = hsv_to_rgb(h, s, v);
+    }
+    led_strip_update_rgb(strip, pixels, NUM_LEDS);
+}
+
+void rgb_leds_update(void)
+{
+    if (!device_is_ready(strip))
+    {
+        return;
+    }
+
+    hsv_to_leds(rgb_color, rgb_saturation, rgb_light);
+}
+#if RGB_EFFECTS
+#if RGB_EFF_RAINBOW
+void rgb_eff_rainbow()
+{
+    uint8_t sum = 255 / NUM_LEDS;
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        uint8_t h = (rgb_beat + (i * sum));
+        pixels[i] = hsv_to_rgb(h, rgb_saturation, rgb_light);
+    }
+}
+#endif
+#if RGB_EFF_COLORS
+void rgb_eff_colors()
+{
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        pixels[i] = hsv_to_rgb(rgb_beat, rgb_saturation, rgb_light);
+    }
+}
+#endif
+#if RGB_EFF_KITT
+void rgb_eff_kitt(void)
+{
+    // Calcule 2x leds num to right or left direction
+    uint8_t led_main = rgb_beat % (NUM_LEDS * 2);
+    if (led_main < NUM_LEDS) // Right direction
+    {
+        uint8_t v = rgb_light;
+        for (int i = led_main; i >= 0; i--)
+        {
+            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 4;
+        }
+        v = rgb_light / 4;
+        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
+        {
+            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 4;
+        }
+    }
+    else // Left direction
+    {
+        led_main = (rgb_beat % (NUM_LEDS * 2)) - NUM_LEDS;
+        uint8_t v = rgb_light;
+        for (int i = led_main; i >= 0; i--)
+        {
+            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 4;
+        }
+        v = rgb_light / 4;
+        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
+        {
+            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
+            v = v / 4;
+        }
+    }
+    if (rgb_beat == (NUM_LEDS * 2))
+    {
+        rgb_beat = 0;
+    }
+}
+#endif
+void rgb_effects_update(void)
+{
+    rgb_beat++;
+    rgb_eff_colors();
+    led_strip_update_rgb(strip, pixels, NUM_LEDS);
+}
+static void rgb_work_handler(struct k_work *work)
+{
+    rgb_effects_update();
+}
+K_WORK_DEFINE(rgb_work_obj, rgb_work_handler);
+
+static void rgb_timer_handler(struct k_timer *dummy)
+{
+    k_work_submit(&rgb_work_obj);
+}
+K_TIMER_DEFINE(rgb_periodic_timer, rgb_timer_handler, NULL);
+void rgb_start_periodic_task(void)
+{
+    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(60));
+}
+void rgb_stop_periodic_task(void)
+{
+    k_timer_stop(&rgb_periodic_timer);
+    rgb_beat = 0;
+}
+#endif
+#endif
+
+/* ============= RGB + POWER_EXT ============= */
+#if RGB || POWER_EXT
+static void rgb_power_ext_delayer(struct k_work *work)
+{
+
+#if POWER_EXT && POWER_EXT_RGB_LINKED
+    gpio_pin_set_dt(&power_ext, rgb_on);
+    k_sleep(K_MSEC(POWER_EXT_RGB_DELAY));
+#elif POWER_EXT
+    gpio_pin_set_dt(&power_ext, power_ext_on);
+#endif
+
+    if (rgb_on)
+    {
+        rgb_leds_update();
+    }
+}
+static void rgb_power_ext_update(void)
+{
+    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
+}
+#endif
+
+/* ================================================ *\
+|* ===================== USB ====================== *|
+\* ================================================ */
 
 static const struct device *usb_hid_dev;
 static volatile bool usb_configured;
@@ -144,12 +338,18 @@ static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
     {
     case USB_DC_CONFIGURED:
         usb_configured = true;
-        LOG_INF("USB configured");
+        LOG_INF("USB configured (cable connected)");
+        break;
+    case USB_DC_CONNECTED:
+        LOG_INF("USB cable connected (VBUS detected)");
         break;
     case USB_DC_DISCONNECTED:
+        usb_configured = false;
+        LOG_INF("USB cable disconnected (VBUS removed) - peripheral suspended");
+        break;
     case USB_DC_SUSPEND:
         usb_configured = false;
-        LOG_INF("USB disconnected/suspended");
+        LOG_INF("USB suspended");
         break;
     default:
         break;
@@ -377,198 +577,6 @@ void bat_start_periodic_task(void)
 void bat_stop_periodic_task(void)
 {
     k_timer_stop(&bat_periodic_timer);
-}
-#endif
-
-/* ================================================ *\
-|* ===================== RGB ====================== *|
-\* ================================================ */
-
-#if RGB
-struct led_rgb hsv_to_rgb(uint8_t h, uint8_t s, uint8_t v)
-{
-    struct led_rgb rgb;
-    uint8_t region, remainder, p, q, t;
-
-    if (s == 0)
-    {
-        rgb.r = rgb.g = rgb.b = v;
-        return rgb;
-    }
-
-    region = h / 43;
-    remainder = (h % 43) * 6;
-
-    p = (v * (255 - s)) >> 8;
-    q = (v * (255 - ((s * remainder) >> 8))) >> 8;
-    t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8;
-
-    switch (region)
-    {
-    case 0:
-        rgb.r = v;
-        rgb.g = t;
-        rgb.b = p;
-        break;
-    case 1:
-        rgb.r = q;
-        rgb.g = v;
-        rgb.b = p;
-        break;
-    case 2:
-        rgb.r = p;
-        rgb.g = v;
-        rgb.b = t;
-        break;
-    case 3:
-        rgb.r = p;
-        rgb.g = q;
-        rgb.b = v;
-        break;
-    case 4:
-        rgb.r = t;
-        rgb.g = p;
-        rgb.b = v;
-        break;
-    default:
-        rgb.r = v;
-        rgb.g = p;
-        rgb.b = q;
-        break;
-    }
-    return rgb;
-}
-
-static void hsv_to_leds(uint8_t h, uint8_t s, uint8_t v)
-{
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
-    {
-        pixels[i] = hsv_to_rgb(h, s, v);
-    }
-    led_strip_update_rgb(strip, pixels, NUM_LEDS);
-}
-
-void rgb_leds_update(void)
-{
-    if (!device_is_ready(strip))
-    {
-        return;
-    }
-
-    hsv_to_leds(rgb_color, rgb_saturation, rgb_light);
-}
-#if RGB_EFFECTS
-#if RGB_EFF_RAINBOW
-void rgb_eff_rainbow()
-{
-    uint8_t sum = 255 / NUM_LEDS;
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
-    {
-        uint8_t h = (rgb_beat + (i * sum));
-        pixels[i] = hsv_to_rgb(h, rgb_saturation, rgb_light);
-    }
-}
-#endif
-#if RGB_EFF_COLORS
-void rgb_eff_colors()
-{
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
-    {
-        pixels[i] = hsv_to_rgb(rgb_beat, rgb_saturation, rgb_light);
-    }
-}
-#endif
-#if RGB_EFF_KITT
-void rgb_eff_kitt(void)
-{
-    // Calcule 2x leds num to right or left direction
-    uint8_t led_main = rgb_beat % (NUM_LEDS * 2);
-    if (led_main < NUM_LEDS) // Right direction
-    {
-        uint8_t v = rgb_light;
-        for (int i = led_main; i >= 0; i--)
-        {
-            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 4;
-        }
-        v = rgb_light / 4;
-        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
-        {
-            pixels[i] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 4;
-        }
-    }
-    else // Left direction
-    {
-        led_main = (rgb_beat % (NUM_LEDS * 2)) - NUM_LEDS;
-        uint8_t v = rgb_light;
-        for (int i = led_main; i >= 0; i--)
-        {
-            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 4;
-        }
-        v = rgb_light / 4;
-        for (uint8_t i = led_main + 1; i < NUM_LEDS; i++)
-        {
-            pixels[NUM_LEDS - i - 1] = hsv_to_rgb(rgb_color, rgb_saturation, v);
-            v = v / 4;
-        }
-    }
-    if (rgb_beat == (NUM_LEDS * 2))
-    {
-        rgb_beat = 0;
-    }
-}
-#endif
-void rgb_effects_update(void)
-{
-    rgb_beat++;
-    rgb_eff_colors();
-    led_strip_update_rgb(strip, pixels, NUM_LEDS);
-}
-static void rgb_work_handler(struct k_work *work)
-{
-    rgb_effects_update();
-}
-K_WORK_DEFINE(rgb_work_obj, rgb_work_handler);
-
-static void rgb_timer_handler(struct k_timer *dummy)
-{
-    k_work_submit(&rgb_work_obj);
-}
-K_TIMER_DEFINE(rgb_periodic_timer, rgb_timer_handler, NULL);
-void rgb_start_periodic_task(void)
-{
-    k_timer_start(&rgb_periodic_timer, K_NO_WAIT, K_MSEC(60));
-}
-void rgb_stop_periodic_task(void)
-{
-    k_timer_stop(&rgb_periodic_timer);
-    rgb_beat = 0;
-}
-#endif
-#endif
-
-/* ============= RGB + POWER_EXT ============= */
-#if RGB || POWER_EXT
-static void rgb_power_ext_delayer(struct k_work *work)
-{
-
-#if POWER_EXT && POWER_EXT_RGB_LINKED
-    gpio_pin_set_dt(&power_ext, rgb_on);
-    k_sleep(K_MSEC(POWER_EXT_RGB_DELAY));
-#elif POWER_EXT
-    gpio_pin_set_dt(&power_ext, power_ext_on);
-#endif
-
-    if (rgb_on)
-    {
-        rgb_leds_update();
-    }
-}
-static void rgb_power_ext_update(void)
-{
-    k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
 }
 #endif
 
@@ -1653,31 +1661,24 @@ int main(void)
 
     start_advertising();
 
-    /* USB HID init -- only if VBUS detected */
-    if (nrf_power_usbregstatus_vbusdet_get(NRF_POWER))
+#if USB
+    usb_hid_dev = device_get_binding("HID_0");
+    if (usb_hid_dev)
     {
-        LOG_INF("VBUS detected, initializing USB");
-        usb_hid_dev = device_get_binding("HID_0");
-        if (usb_hid_dev)
+        usb_hid_register_device(usb_hid_dev, hid_report_map,
+                                sizeof(hid_report_map), &usb_ops);
+        usb_hid_init(usb_hid_dev);
+        err = usb_enable(usb_status_cb);
+        if (err)
         {
-            usb_hid_register_device(usb_hid_dev, hid_report_map,
-                                    sizeof(hid_report_map), &usb_ops);
-            usb_hid_init(usb_hid_dev);
-            err = usb_enable(usb_status_cb);
-            if (err)
-            {
-                LOG_WRN("USB enable failed (err %d)", err);
-            }
-            else
-            {
-                LOG_INF("USB HID ready");
-            }
+            LOG_WRN("USB enable failed (err %d)", err);
+        }
+        else
+        {
+            LOG_INF("USB HID ready (will suspend automatically when cable removed)");
         }
     }
-    else
-    {
-        LOG_INF("No VBUS -- battery mode, BLE only");
-    }
+#endif
 
     debounce_init();
     reports_init();

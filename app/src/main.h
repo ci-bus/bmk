@@ -43,6 +43,9 @@
 #ifndef ENCODERS
 #define ENCODERS 0
 #endif
+#ifndef USB
+#define USB true
+#endif
 
 #ifndef RGB
 #define RGB false
