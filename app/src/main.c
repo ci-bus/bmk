@@ -4,9 +4,6 @@
  * Priority: USB when connected, BLE otherwise
  */
 
-#include <hal/nrf_power.h>
-#include <zephyr/pm/device.h>
-
 #include "main.h"
 
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
@@ -52,6 +49,8 @@ static struct encoder_key encoder_keys[ENCODERS] = {0};
 static uint8_t battery_percent = 100;
 #endif
 
+static const struct device *usb_hid_dev;
+static volatile bool usb_connected;
 K_SEM_DEFINE(sleep_sem, 0, 1);
 static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
@@ -323,33 +322,42 @@ static void rgb_power_ext_update(void)
 {
     k_work_reschedule(&rgb_power_ext_work, K_MSEC(POWER_EXT_RGB_DELAY));
 }
+
+static void rgb_spi_off(void)
+{
+    if (!rgb_spi_suspended)
+    {
+        pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
+        rgb_spi_suspended = true;
+    }
+}
+static void rgb_spi_on(void)
+{
+    if (rgb_spi_suspended)
+    {
+        pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
+        rgb_spi_suspended = false;
+    }
+}
 #endif
 
 /* ================================================ *\
 |* ===================== USB ====================== *|
 \* ================================================ */
 
-static const struct device *usb_hid_dev;
-static volatile bool usb_configured;
-
 static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
 {
     switch (status)
     {
     case USB_DC_CONFIGURED:
-        usb_configured = true;
-        LOG_INF("USB configured (cable connected)");
         break;
     case USB_DC_CONNECTED:
-        LOG_INF("USB cable connected (VBUS detected)");
+        usb_connected = true;
         break;
     case USB_DC_DISCONNECTED:
-        usb_configured = false;
-        LOG_INF("USB cable disconnected (VBUS removed) - peripheral suspended");
+        usb_connected = false;
         break;
     case USB_DC_SUSPEND:
-        usb_configured = false;
-        LOG_INF("USB suspended");
         break;
     default:
         break;
@@ -368,11 +376,6 @@ static const struct hid_ops usb_ops = {
 static int usb_send_report(const thread_report_t *report)
 {
     int err;
-
-    if (!usb_configured)
-    {
-        return -ENOTCONN;
-    }
 
     if (report->type == BMK_KEYBOARD)
     {
@@ -541,7 +544,7 @@ static int ble_send_report(thread_report_t *report)
 
 static int send_report(thread_report_t *report)
 {
-    if (usb_configured)
+    if (usb_connected)
     {
         return usb_send_report(report);
     }
@@ -694,10 +697,6 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
-#if RGB
-    pm_device_action_run(spi_dev, PM_DEVICE_ACTION_SUSPEND);
-    rgb_spi_suspended = true;
-#endif
     if (current_conn)
     {
         bt_conn_unref(current_conn);
@@ -892,13 +891,6 @@ void keyboard_wakeup(void)
 #if RGB || POWER_EXT
     rgb_power_ext_update();
 #endif
-#if RGB
-    if (rgb_spi_suspended)
-    {
-        pm_device_action_run(spi_dev, PM_DEVICE_ACTION_RESUME);
-        rgb_spi_suspended = false;
-    }
-#endif
 #if RGB_EFFECTS
     rgb_start_periodic_task();
 #endif
@@ -1082,6 +1074,7 @@ static int press_key(uint16_t keycode)
         case HID_KEY_POWER_ON:
             power_ext_on = true;
 #if POWER_EXT_RGB_LINKED
+            rgb_spi_on();
             rgb_on = power_ext_on;
 #endif
             rgb_power_ext_update();
@@ -1090,6 +1083,7 @@ static int press_key(uint16_t keycode)
             power_ext_on = false;
 #if POWER_EXT_RGB_LINKED
             rgb_on = power_ext_on;
+            rgb_spi_off();
 #endif
             rgb_power_ext_update();
             break;
@@ -1108,6 +1102,7 @@ static int press_key(uint16_t keycode)
             rgb_leds_update();
             break;
         case HID_KEY_RGB_ON:
+            rgb_spi_on();
             rgb_on = true;
 #if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
@@ -1116,13 +1111,23 @@ static int press_key(uint16_t keycode)
             break;
         case HID_KEY_RGB_OFF:
             rgb_on = false;
+            rgb_spi_off();
 #if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
 #endif
             rgb_power_ext_update();
             break;
         case HID_KEY_RGB_TOGGLE:
-            rgb_on = !rgb_on;
+            if (rgb_on)
+            {
+                rgb_on = false;
+                rgb_spi_off();
+            }
+            else
+            {
+                rgb_spi_on();
+                rgb_on = true;
+            }
 #if POWER_EXT && POWER_EXT_RGB_LINKED
             power_ext_on = rgb_on;
 #endif
@@ -1697,7 +1702,7 @@ int main(void)
 
     while (1)
     {
-        if ((k_uptime_get_32() - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key())
+        if ((k_uptime_get_32() - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key() && !usb_connected)
         {
             keyboard_sleep();
             while (k_sem_take(&sleep_sem, K_NO_WAIT) == 0)

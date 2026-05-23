@@ -12,6 +12,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
+#include <zephyr/pm/device.h>
 #include <hal/nrf_power.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/device.h>

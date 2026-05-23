@@ -1,8 +1,6 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#include <zephyr/drivers/led_strip.h>
-
 #include "keyboard.h"
 #include "battery/battery.h"
 
