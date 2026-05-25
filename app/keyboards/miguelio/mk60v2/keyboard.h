@@ -7,8 +7,8 @@
 #define MATRIX_ROWS 9
 #define LAYERS 2
 #define ENCODERS 1
-#define POWER_EXT true
-#define RGB true
+#define POWER_EXT false
+#define RGB false
 #define RGB_PORT 0
 #define RGB_PIN 26
 #define RGB_LEDS 15

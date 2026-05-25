@@ -10,8 +10,12 @@ LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
 
 static struct gpio_dt_spec cols[MATRIX_COLS] = {0};
 static struct gpio_dt_spec rows[MATRIX_ROWS] = {0};
+#if ENCODERS
 static struct gpio_dt_spec encoders[ENCODER_PINS] = {0};
+#endif
+#if POWER_EXT
 static struct gpio_dt_spec power_ext = {0};
+#endif
 
 #if RGB
 #define STRIP_NODE DT_NODELABEL(ws2812)
