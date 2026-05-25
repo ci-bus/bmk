@@ -1018,7 +1018,7 @@ static int release_all()
     return 1;
 }
 
-static int press_key(uint16_t keycode)
+static int press_key(uint16_t keycode, bool tap_hold_key)
 {
     last_activity = k_uptime_get_32();
     uint8_t idx = 0;
@@ -1045,7 +1045,7 @@ static int press_key(uint16_t keycode)
             if (idx != 0)
             {
                 // Tap hold keys
-                if (some_held_mod_keys)
+                if (!tap_hold_key && some_held_mod_keys)
                 {
                     held_mod_keys_to_report();
                 }
@@ -1410,7 +1410,7 @@ void press_delay_tap_hold(uint8_t idx, uint16_t keycode)
                       ? (uint16_t)(keycode & 0xFF)
                       : (uint16_t)(keycode >> 8);
         release_key(keycode, false);
-        int res = press_key(keycode);
+        int res = press_key(keycode, true);
         if (res != -1)
         {
             keys[idx].held = true;
@@ -1446,7 +1446,7 @@ void release_tap_hold(uint8_t idx, uint16_t keycode)
     {
         remove_held_mod_keys(idx);
         keycode = (uint16_t)(keycode & 0xFF);
-        int res = press_key(keycode);
+        int res = press_key(keycode, true);
         if (res != -1)
         {
             release_key(keycode, true);
@@ -1505,7 +1505,7 @@ void matrix_scan()
                         else
                         {
                             release_key(keycode, false);
-                            int res = press_key(keycode);
+                            int res = press_key(keycode, false);
                             if (res != -1)
                             {
                                 keys[idx].pressed = true;
@@ -1608,7 +1608,7 @@ void matrix_scan()
                 // Reset values
                 encoder_keys[e].last_value = encoder_keys[e].direction = encoder_keys[e].debounce_count = 0;
                 // Send keycode
-                press_key(keycode);
+                press_key(keycode, false);
                 release_key(keycode, true);
             }
             else
