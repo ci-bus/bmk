@@ -50,6 +50,7 @@ static uint8_t abs_cols_pins[MATRIX_COLS] = {0};
 static uint8_t abs_rows_pins[MATRIX_ROWS] = {0};
 
 static struct key keys[MATRIX_COLS * MATRIX_ROWS] = {0};
+
 #if ENCODERS
 static struct encoder_key encoder_keys[ENCODERS] = {0};
 #endif
@@ -58,8 +59,11 @@ static struct encoder_key encoder_keys[ENCODERS] = {0};
 static uint8_t battery_percent = 100;
 #endif
 
-static const struct device *usb_hid_dev;
-static volatile bool usb_connected;
+#if USB
+static bool usb_connected;
+static int32_t last_check_usb = 0;
+#endif
+
 K_SEM_DEFINE(sleep_sem, 0, 1);
 static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
@@ -71,7 +75,7 @@ static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static struct k_work_delayable security_work;
-static bool sleeping = false;
+static bool awake = false;
 static bool deep_sleep = false;
 
 /* Advertising parameters: connectable, no timeout */
@@ -355,10 +359,33 @@ static void rgb_spi_on(void)
 |* ===================== USB ====================== *|
 \* ================================================ */
 
-static void usb_int_in_ready(const struct device *dev)
+#if USB
+
+static const struct device *usb_hid_dev;
+
+void bmk_check_usb(void)
 {
-    /* EP ready */
+    if (nrf_power_usbregstatus_vbusdet_get(NRF_POWER))
+    {
+        if (!usb_connected)
+        {
+            usb_enable(NULL);
+            usb_connected = true;
+            last_activity = k_uptime_get_32();
+        }
+    }
+    else
+    {
+        if (usb_connected)
+        {
+            usb_disable();
+            usb_connected = false;
+            last_activity = k_uptime_get_32();
+        }
+    }
 }
+
+static void usb_int_in_ready(const struct device *dev) {}
 
 static const struct hid_ops usb_ops = {
     .int_in_ready = usb_int_in_ready,
@@ -383,6 +410,8 @@ static int usb_send_report(const thread_report_t *report)
 
     return err;
 }
+
+#endif
 
 /* ==================== BLE HID ==================== */
 
@@ -535,10 +564,12 @@ static int ble_send_report(thread_report_t *report)
 
 static int send_report(thread_report_t *report)
 {
+#if USB
     if (usb_connected)
     {
         return usb_send_report(report);
     }
+#endif
     return ble_send_report(report);
 }
 
@@ -660,6 +691,9 @@ void keyboard_sleep(void)
 #if POWER_EXT
     gpio_pin_set_dt(&power_ext, 0);
 #endif
+#if USB
+    bmk_check_usb();
+#endif
 
     for (int r = (MATRIX_ROWS - 1); r >= 0; r--)
     {
@@ -684,7 +718,7 @@ void keyboard_sleep(void)
     {
         nrf_gpio_pin_set(abs_cols_pins[c]);
     }
-    sleeping = true;
+    awake = false;
 }
 
 void keyboard_deep_sleep(void)
@@ -897,32 +931,10 @@ void keyboard_wakeup(void)
             sys_reboot(SYS_REBOOT_COLD);
         }
     }
-    sleeping = false;
-}
-
-/* ==================== USB CALLBACK ==================== */
-
-static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
-{
-    switch (status)
-    {
-    case USB_DC_CONFIGURED:
-        break;
-    case USB_DC_CONNECTED:
-        usb_connected = true;
-        if (sleeping) {
-            k_sem_give(&sleep_sem);
-        }
-        break;
-    case USB_DC_DISCONNECTED:
-        last_activity = k_uptime_get_32();
-        usb_connected = false;
-        break;
-    case USB_DC_SUSPEND:
-        break;
-    default:
-        break;
-    }
+#if USB
+    bmk_check_usb();
+#endif
+    awake = true;
 }
 
 /* ======================================================= *\
@@ -1726,25 +1738,6 @@ int main(void)
 
     start_advertising();
 
-#if USB
-    usb_hid_dev = device_get_binding("HID_0");
-    if (usb_hid_dev)
-    {
-        usb_hid_register_device(usb_hid_dev, hid_report_map,
-                                sizeof(hid_report_map), &usb_ops);
-        usb_hid_init(usb_hid_dev);
-        err = usb_enable(usb_status_cb);
-        if (err)
-        {
-            LOG_WRN("USB enable failed (err %d)", err);
-        }
-        else
-        {
-            LOG_INF("USB HID ready (will suspend automatically when cable removed)");
-        }
-    }
-#endif
-
     debounce_init();
     reports_init();
     keymap_init();
@@ -1760,17 +1753,43 @@ int main(void)
 #endif
 #endif
 
+#if USB
+    usb_hid_dev = device_get_binding("HID_0");
+    if (usb_hid_dev)
+    {
+        usb_hid_register_device(usb_hid_dev, hid_report_map,
+                                sizeof(hid_report_map), &usb_ops);
+        usb_hid_init(usb_hid_dev);
+        bmk_check_usb();
+    }
+#endif
+
+    awake = true;
+    last_activity = k_uptime_get_32();
+
     while (1)
     {
-        if ((k_uptime_get_32() - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key() && !usb_connected)
+        int32_t uptime = k_uptime_get_32();
+        if ((uptime - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key()
+#if USB
+            && !usb_connected
+#endif
+        )
         {
             keyboard_sleep();
             while (k_sem_take(&sleep_sem, K_NO_WAIT) == 0)
                 ;
             k_sem_take(&sleep_sem, K_FOREVER);
             keyboard_wakeup();
-            last_activity = k_uptime_get_32();
+            last_activity = uptime;
         }
+#if USB
+        else if ((uptime - last_check_usb) > (USB_CHECK_TIMEOUT))
+        {
+            bmk_check_usb();
+            last_check_usb = uptime;
+        }
+#endif
         matrix_scan();
         k_usleep(CYCLE_DELAY);
     }

@@ -25,7 +25,6 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/reboot.h>
 #include <hal/nrf_gpio.h>
-#include <nrfx_power.h>
 
 #include "hid.h"
 

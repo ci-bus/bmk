@@ -44,6 +44,9 @@
 #ifndef USB
 #define USB true
 #endif
+#ifndef USB_CHECK_TIMEOUT
+#define USB_CHECK_TIMEOUT 1000
+#endif
 
 #ifndef RGB
 #define RGB false
