@@ -78,6 +78,12 @@ static struct k_work_delayable security_work;
 static bool awake = false;
 static bool deep_sleep = false;
 
+static atomic_t ble_state = BLE_IDLE;
+static bool ble_notify_enabled;
+static bool boot_notify_enabled;
+static struct bt_conn *current_conn = NULL;
+static uint8_t protocol_mode = 0x01;
+
 /* Advertising parameters: connectable, no timeout */
 #define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
     BT_LE_ADV_OPT_CONNECTABLE,               \
@@ -415,11 +421,6 @@ static int usb_send_report(const thread_report_t *report)
 
 /* ==================== BLE HID ==================== */
 
-static bool ble_notify_enabled;
-static bool boot_notify_enabled;
-static struct bt_conn *current_conn = NULL;
-static uint8_t protocol_mode = 0x01;
-
 static ssize_t read_hid_info(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                              void *buf, uint16_t len, uint16_t offset)
 {
@@ -527,7 +528,7 @@ static int ble_send_report(thread_report_t *report)
     uint8_t *buf;
     const struct bt_gatt_attr *attr;
 
-    if (current_conn == NULL)
+    if (!current_conn)
     {
         return -ENOTCONN;
     }
@@ -635,9 +636,9 @@ static void start_advertising(void)
         ARRAY_SIZE(ad),
         sd,
         ARRAY_SIZE(sd));
-    if (err && err != -EALREADY)
+    if (!err || err == -EALREADY)
     {
-        LOG_ERR("Advertising failed (err %d)", err);
+        atomic_set(&ble_state, BLE_ADVERTISING);
     }
 }
 
@@ -650,9 +651,9 @@ static void start_slow_advertising(void)
         ARRAY_SIZE(ad),
         sd,
         ARRAY_SIZE(sd));
-    if (err && err != -EALREADY)
+    if (!err || err == -EALREADY)
     {
-        LOG_ERR("Advertising failed (err %d)", err);
+        atomic_set(&ble_state, BLE_ADVERTISING);
     }
 }
 
@@ -731,9 +732,9 @@ void keyboard_deep_sleep(void)
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
-    last_activity = -(SLEEP_TIMEOUT * 1000);
     bt_le_adv_stop();
     bt_disable();
+    last_activity = -(SLEEP_TIMEOUT * 1000);
     deep_sleep = true;
 }
 
@@ -752,86 +753,106 @@ void reset_mac_and_identity(void)
     param.id = (uint8_t)id;
 }
 
-void force_bluetooth_reset(void)
+void ble_reset(void)
 {
-#if BATTERY
-    bat_stop_periodic_task();
-#endif
+    hsv_to_leds(160, 255, 255);
     bt_le_adv_stop();
-    if (current_conn)
-    {
-        bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-    }
-    bt_unpair(BT_ID_DEFAULT, NULL);
+    hsv_to_leds(192, 255, 255);
+    // bt_unpair(BT_ID_DEFAULT, NULL);
+    hsv_to_leds(225, 255, 255);
     reset_mac_and_identity();
     start_advertising();
+    hsv_to_leds(255, 100, 100);
+}
+
+void force_bluetooth_reset(void)
+{
+    hsv_to_leds(0, 255, 255);
+    if (atomic_get(&ble_state) != BLE_RESETTING)
+    {
+        atomic_set(&ble_state, BLE_RESETTING);
+        hsv_to_leds(32, 255, 255);
+#if BATTERY
+        bat_stop_periodic_task();
+#endif
+        hsv_to_leds(64, 255, 255);
+        k_work_cancel_delayable(&security_work);
+        if (current_conn)
+        {
+            hsv_to_leds(96, 255, 255);
+            bt_conn_disconnect(current_conn, BT_HCI_ERR_LOCALHOST_TERM_CONN);
+            return;
+        }
+        ble_reset();
+    }
 }
 
 static void security_work_handler(struct k_work *work)
 {
-    if (current_conn)
+    if (!current_conn || atomic_get(&ble_state) != BLE_SECURITY)
     {
-        LOG_INF("Aplicando seguridad de forma diferida...");
-        int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
-        if (err)
-        {
-            LOG_ERR("Error al solicitar seguridad diferida (err %d)", err);
-            force_bluetooth_reset();
-        }
-    }
-}
-
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-    if (err)
-    {
-        LOG_ERR("Connection failed (err 0x%02x)", err);
-        force_bluetooth_reset();
         return;
     }
-    LOG_INF("BLE connected");
-    current_conn = bt_conn_ref(conn);
-
-    k_work_reschedule(&security_work, K_MSEC(50));
-
+    atomic_set(&ble_state, BLE_CONNECTING);
+    int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
+    if (err)
+    {
+        atomic_set(&ble_state, BLE_DISCONNECTING);
+        start_advertising();
+        return;
+    }
+    atomic_set(&ble_state, BLE_CONNECTED);
 #if BATTERY
     bat_start_periodic_task();
 #endif
 }
 
-static void disconnected(struct bt_conn *conn, uint8_t reason)
+static void connected(struct bt_conn *conn, uint8_t err)
 {
-    LOG_INF("BLE disconnected (reason 0x%02x)", reason);
-    if (current_conn)
+    if (err || atomic_get(&ble_state) != BLE_ADVERTISING)
+    {
+        return;
+    }
+    atomic_set(&ble_state, BLE_CONNECTING);
+    if (current_conn != conn)
     {
         bt_conn_unref(current_conn);
-        current_conn = NULL;
+        current_conn = bt_conn_ref(conn);
     }
-    ble_notify_enabled = false;
-    boot_notify_enabled = false;
-    protocol_mode = 0x01;
-    if (reason)
+    k_work_reschedule(&security_work, K_MSEC(DELAY_SECURITY_WORK));
+    atomic_set(&ble_state, BLE_SECURITY);
+}
+
+static void disconnected(struct bt_conn *conn, uint8_t reason)
+{
+    if (atomic_get(&ble_state) == BLE_CONNECTED && current_conn == conn)
     {
-        if (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN || reason == BT_HCI_ERR_REMOTE_POWER_OFF || reason == BT_HCI_ERR_LOCALHOST_TERM_CONN)
+        atomic_set(&ble_state, BLE_DISCONNECTING);
+        if (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN ||
+            reason == BT_HCI_ERR_REMOTE_POWER_OFF)
         {
-            last_activity = -(SLEEP_TIMEOUT * 1000);
             keyboard_deep_sleep();
         }
+        if (atomic_get(&ble_state) == BLE_SECURITY)
+        {
+            k_work_cancel_delayable(&security_work);
+        }
+        hsv_to_leds(128, 255, 255);
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+        if (atomic_get(&ble_state) == BLE_RESETTING)
+        {
+            ble_reset();
+        }
+        ble_notify_enabled = false;
+        boot_notify_enabled = false;
+        protocol_mode = 0x01;
+        atomic_set(&ble_state, BLE_IDLE);
     }
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
-                             enum bt_security_err err)
-{
-    if (err)
-    {
-        force_bluetooth_reset();
-    }
-    else
-    {
-        LOG_INF("Security level %d", level);
-    }
-}
+                             enum bt_security_err err) {}
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
     .connected = connected,
@@ -839,25 +860,9 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
     .security_changed = security_changed,
 };
 
-static void auth_cancel(struct bt_conn *conn)
-{
-    LOG_INF("Pairing cancelled");
-    force_bluetooth_reset();
-}
-
-static void pairing_complete(struct bt_conn *conn, bool bonded)
-{
-    LOG_INF("Pairing complete (bonded=%d)", bonded);
-}
-
-static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
-{
-    LOG_INF("Pairing failed");
-    if (err)
-    {
-        force_bluetooth_reset();
-    }
-}
+static void auth_cancel(struct bt_conn *conn) {}
+static void pairing_complete(struct bt_conn *conn, bool bonded) {}
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err err) {}
 
 static struct bt_conn_auth_cb auth_cb = {
     .cancel = auth_cancel,
@@ -923,7 +928,7 @@ void keyboard_wakeup(void)
 #if BATTERY
     bat_start_periodic_task();
 #endif
-    if (deep_sleep)
+    if (deep_sleep || atomic_get(&ble_state) == BLE_IDLE)
     {
         int err = keyboard_deep_sleep_wakeup();
         if (err)
@@ -1033,6 +1038,37 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
         }
         else
         {
+            // Temp to debug
+            switch (keycode)
+            {
+            case HID_KEY_ESC:
+                hsv_to_leds(0, 0, 0);
+                break;
+            case HID_KEY_1:
+                hsv_to_leds(32, 255, 255);
+                break;
+            case HID_KEY_2:
+                hsv_to_leds(64, 255, 255);
+                break;
+            case HID_KEY_3:
+                hsv_to_leds(96, 255, 255);
+                break;
+            case HID_KEY_4:
+                hsv_to_leds(128, 255, 255);
+                break;
+            case HID_KEY_5:
+                hsv_to_leds(160, 255, 255);
+                break;
+            case HID_KEY_6:
+                hsv_to_leds(192, 255, 255);
+                break;
+            case HID_KEY_7:
+                hsv_to_leds(224, 255, 255);
+                break;
+            case HID_KEY_8:
+                hsv_to_leds(255, 255, 255);
+                break;
+            }
             // Find free index to send keycode
             for (uint8_t i = 3; i < 9; i++)
             {
@@ -1261,6 +1297,7 @@ static int release_key(uint16_t keycode, bool send)
         switch (keycode)
         {
         case HID_DEEP_SLEEP:
+            release_all();
             keyboard_deep_sleep();
             return 0;
         }

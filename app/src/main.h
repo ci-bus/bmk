@@ -96,6 +96,8 @@
 #define BATTERY true
 #endif
 
+#define DELAY_SECURITY_WORK 50
+
 struct key
 {
     uint16_t kc[LAYERS];
@@ -139,6 +141,16 @@ struct timeout_tapped_keys
 {
     struct k_work_delayable dwork;
     uint8_t key_idx;
+};
+
+enum ble_state {
+    BLE_IDLE,
+    BLE_ADVERTISING,
+    BLE_CONNECTING,
+    BLE_CONNECTED,
+    BLE_SECURITY,
+    BLE_DISCONNECTING,
+    BLE_RESETTING
 };
 
 #endif
