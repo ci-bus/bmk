@@ -734,6 +734,7 @@ void keyboard_deep_sleep(void)
     protocol_mode = 0x01;
     bt_le_adv_stop();
     bt_disable();
+    atomic_set(&ble_state, BLE_DISABLED);
     last_activity = -(SLEEP_TIMEOUT * 1000);
     deep_sleep = true;
 }
@@ -753,58 +754,45 @@ void reset_mac_and_identity(void)
     param.id = (uint8_t)id;
 }
 
-void ble_reset(void)
-{
-    hsv_to_leds(160, 255, 255);
-    bt_le_adv_stop();
-    hsv_to_leds(192, 255, 255);
-    // bt_unpair(BT_ID_DEFAULT, NULL);
-    hsv_to_leds(225, 255, 255);
-    reset_mac_and_identity();
-    start_advertising();
-    hsv_to_leds(255, 100, 100);
-}
-
 void force_bluetooth_reset(void)
 {
-    hsv_to_leds(0, 255, 255);
     if (atomic_get(&ble_state) != BLE_RESETTING)
     {
-        atomic_set(&ble_state, BLE_RESETTING);
-        hsv_to_leds(32, 255, 255);
-#if BATTERY
-        bat_stop_periodic_task();
-#endif
-        hsv_to_leds(64, 255, 255);
-        k_work_cancel_delayable(&security_work);
-        if (current_conn)
+        if (atomic_get(&ble_state) == BLE_ADVERTISING)
         {
-            hsv_to_leds(96, 255, 255);
-            bt_conn_disconnect(current_conn, BT_HCI_ERR_LOCALHOST_TERM_CONN);
-            return;
+            bt_le_adv_stop();
         }
-        ble_reset();
+        if (atomic_get(&ble_state) == BLE_SECURITY)
+        {
+            k_work_cancel_delayable(&security_work);
+        }
+        atomic_set(&ble_state, BLE_RESETTING);
+        bt_unpair(BT_ID_DEFAULT, NULL);
+        sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
 static void security_work_handler(struct k_work *work)
 {
-    if (!current_conn || atomic_get(&ble_state) != BLE_SECURITY)
+    if (current_conn && atomic_get(&ble_state) == BLE_SECURITY)
     {
-        return;
-    }
-    atomic_set(&ble_state, BLE_CONNECTING);
-    int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
-    if (err)
-    {
-        atomic_set(&ble_state, BLE_DISCONNECTING);
-        start_advertising();
-        return;
-    }
-    atomic_set(&ble_state, BLE_CONNECTED);
+        atomic_set(&ble_state, BLE_CONNECTING);
+        bt_security_t current_security = bt_conn_get_security(current_conn);
+        if (current_security)
+        {
+            if (current_security < BT_SECURITY_L2)
+            {
+                bt_conn_set_security(current_conn, BT_SECURITY_L2);
+            }
+            else
+            {
+                atomic_set(&ble_state, BLE_CONNECTED);
 #if BATTERY
-    bat_start_periodic_task();
+                bat_start_periodic_task();
 #endif
+            }
+        }
+    }
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -825,34 +813,48 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-    if (atomic_get(&ble_state) == BLE_CONNECTED && current_conn == conn)
+    if (current_conn == conn)
     {
-        atomic_set(&ble_state, BLE_DISCONNECTING);
-        if (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN ||
-            reason == BT_HCI_ERR_REMOTE_POWER_OFF)
-        {
-            keyboard_deep_sleep();
-        }
         if (atomic_get(&ble_state) == BLE_SECURITY)
         {
             k_work_cancel_delayable(&security_work);
         }
-        hsv_to_leds(128, 255, 255);
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
-        if (atomic_get(&ble_state) == BLE_RESETTING)
+        if (atomic_get(&ble_state) == BLE_CONNECTED &&
+            (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN ||
+             reason == BT_HCI_ERR_REMOTE_POWER_OFF))
         {
-            ble_reset();
+            keyboard_deep_sleep();
+            return;
         }
-        ble_notify_enabled = false;
-        boot_notify_enabled = false;
-        protocol_mode = 0x01;
-        atomic_set(&ble_state, BLE_IDLE);
     }
+    atomic_set(&ble_state, BLE_DISCONNECTING);
+    bt_conn_unref(current_conn);
+    current_conn = NULL;
+    ble_notify_enabled = false;
+    boot_notify_enabled = false;
+    protocol_mode = 0x01;
+    atomic_set(&ble_state, BLE_IDLE);
+    start_advertising();
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
-                             enum bt_security_err err) {}
+                             enum bt_security_err err)
+{
+    if (atomic_get(&ble_state) == BLE_CONNECTING)
+    {
+        if (err)
+        {
+            bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
+        }
+        else if (level >= BT_SECURITY_L2)
+        {
+            atomic_set(&ble_state, BLE_CONNECTED);
+#if BATTERY
+            bat_start_periodic_task();
+#endif
+        }
+    }
+}
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
     .connected = connected,
@@ -884,6 +886,7 @@ int keyboard_deep_sleep_wakeup(void)
     {
         return err;
     }
+    atomic_set(&ble_state, BLE_IDLE);
 
     bt_conn_auth_cb_register(&auth_cb);
     bt_conn_auth_info_cb_register(&auth_info_cb);

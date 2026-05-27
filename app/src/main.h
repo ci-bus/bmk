@@ -143,14 +143,16 @@ struct timeout_tapped_keys
     uint8_t key_idx;
 };
 
-enum ble_state {
+enum ble_state
+{
     BLE_IDLE,
     BLE_ADVERTISING,
     BLE_CONNECTING,
     BLE_CONNECTED,
     BLE_SECURITY,
     BLE_DISCONNECTING,
-    BLE_RESETTING
+    BLE_RESETTING,
+    BLE_DISABLED,
 };
 
 #endif
