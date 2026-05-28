@@ -1836,3 +1836,9 @@ int main(void)
 
     return 0;
 }
+
+void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
+{
+    sys_reboot(SYS_REBOOT_COLD);
+    CODE_UNREACHABLE;
+}
