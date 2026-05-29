@@ -60,7 +60,7 @@ static uint8_t battery_percent = 100;
 #endif
 
 #if USB
-static bool usb_connected;
+static bool usb_connected = true;
 static int32_t last_check_usb = 0;
 #endif
 
@@ -444,7 +444,6 @@ static ssize_t read_report(struct bt_conn *conn, const struct bt_gatt_attr *attr
 static void report_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
     ble_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
-    LOG_INF("Report notifications %s", ble_notify_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_report_ref(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -463,7 +462,6 @@ static ssize_t read_boot_report(struct bt_conn *conn, const struct bt_gatt_attr 
 static void boot_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
     boot_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
-    LOG_INF("Boot notifications %s", boot_notify_enabled ? "enabled" : "disabled");
 }
 
 static ssize_t read_protocol_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -482,7 +480,6 @@ static ssize_t write_protocol_mode(struct bt_conn *conn, const struct bt_gatt_at
         return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
     }
     protocol_mode = *val;
-    LOG_INF("Protocol mode: %s", protocol_mode ? "Report" : "Boot");
     return len;
 }
 
@@ -1028,6 +1025,7 @@ static int release_all()
 
 static int press_key(uint16_t keycode, bool tap_hold_key)
 {
+    LOG_DBG("Key pressed");
     last_activity = k_uptime_get_32();
     uint8_t idx = 0;
     switch (keycode & 0xF000)
@@ -1363,13 +1361,13 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&cols[c]))
         {
-            LOG_ERR("Col %d GPIO not ready", c);
+            // LOG_ERR("Col %d GPIO not ready", c);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&cols[c], GPIO_OUTPUT_INACTIVE);
         if (err)
         {
-            LOG_ERR("Col %d config failed (err %d)", c, err);
+            // LOG_ERR("Col %d config failed (err %d)", c, err);
             return err;
         }
         abs_cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
@@ -1382,13 +1380,13 @@ int pins_init(void)
         rows[r].dt_flags = GPIO_ACTIVE_HIGH;
         if (!gpio_is_ready_dt(&rows[r]))
         {
-            LOG_ERR("Row %d GPIO not ready", r);
+            // LOG_ERR("Row %d GPIO not ready", r);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
         if (err)
         {
-            LOG_ERR("Row %d config failed (err %d)", r, err);
+            // LOG_ERR("Row %d config failed (err %d)", r, err);
             return err;
         }
         abs_rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
@@ -1399,13 +1397,13 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&encoders[e]))
         {
-            LOG_ERR("Encoder pin %d GPIO not ready", e);
+            // LOG_ERR("Encoder pin %d GPIO not ready", e);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
         if (err)
         {
-            LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
+            // LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
             return err;
         }
     }
@@ -1417,18 +1415,16 @@ int pins_init(void)
     power_ext.dt_flags = GPIO_ACTIVE_HIGH;
     if (!gpio_is_ready_dt(&power_ext))
     {
-        LOG_ERR("External power GPIO not ready");
+        // LOG_ERR("External power GPIO not ready");
         return -ENODEV;
     }
     err = gpio_pin_configure_dt(&power_ext, GPIO_OUTPUT_ACTIVE);
     if (err)
     {
-        LOG_ERR("External power config failed (err %d)", err);
+        // LOG_ERR("External power config failed (err %d)", err);
         return err;
     }
 #endif
-
-    LOG_INF("Matrix initialized: %d cols x %d rows", MATRIX_COLS, MATRIX_ROWS);
     return 0;
 }
 
@@ -1747,8 +1743,6 @@ int main(void)
 {
     int err;
 
-    LOG_INF("BMK Keyboard starting...");
-
 // nrf_power_dcdcen_vddh_set(NRF_POWER, true);
 #if defined(CONFIG_SOC_NRF52840_QIAA)
     nrf_power_dcdcen_set(NRF_POWER, true);
@@ -1757,8 +1751,23 @@ int main(void)
     err = settings_subsys_init();
     if (err)
     {
-        LOG_ERR("Error to init settings subsistem (err %d)", err);
+        // LOG_ERR("Error to init settings subsistem (err %d)", err);
     }
+
+#if USB
+    bmk_check_usb();
+    if (usb_connected)
+    {
+        k_msleep(100);
+    }
+    usb_hid_dev = device_get_binding("HID_0");
+    if (usb_hid_dev)
+    {
+        usb_hid_register_device(usb_hid_dev, hid_report_map,
+                                sizeof(hid_report_map), &usb_ops);
+        usb_hid_init(usb_hid_dev);
+    }
+#endif
 
     magic_init();
     delayed_init();
@@ -1774,6 +1783,7 @@ int main(void)
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     settings_load();
+    k_msleep(200);
 #endif
 
     start_advertising();
@@ -1793,19 +1803,14 @@ int main(void)
 #endif
 #endif
 
-#if USB
-    usb_hid_dev = device_get_binding("HID_0");
-    if (usb_hid_dev)
-    {
-        usb_hid_register_device(usb_hid_dev, hid_report_map,
-                                sizeof(hid_report_map), &usb_ops);
-        usb_hid_init(usb_hid_dev);
-        bmk_check_usb();
-    }
-#endif
-
     awake = true;
     last_activity = k_uptime_get_32();
+
+    if (usb_connected)
+    {
+        k_msleep(1000);
+        LOG_INF("BMK Keyboard started!");
+    }
 
     while (1)
     {

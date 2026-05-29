@@ -36,7 +36,7 @@
 #define TAP_HOLD_SIZE_ARRAY 3
 #endif
 #ifndef LOG_LEVEL
-#define LOG_LEVEL LOG_LEVEL_NONE
+#define LOG_LEVEL LOG_LEVEL_DBG
 #endif
 #ifndef ENCODERS
 #define ENCODERS 0
