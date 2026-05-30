@@ -726,10 +726,7 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
-    ble_notify_enabled = false;
-    boot_notify_enabled = false;
-    protocol_mode = 0x01;
-    bt_le_adv_stop();
+    bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
     bt_disable();
     atomic_set(&ble_state, BLE_DISABLED);
     last_activity = -(SLEEP_TIMEOUT * 1000);
@@ -739,17 +736,6 @@ void keyboard_deep_sleep(void)
 /* ================================================= *\
 |* ============= Connection Management ============= *|
 \* ================================================= */
-
-void conn_clear(void)
-{
-    k_work_cancel_delayable(&security_work);
-    bt_le_adv_stop();
-    if (current_conn != NULL)
-    {
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
-    }
-}
 
 void reset_mac_and_identity(void)
 {
@@ -764,89 +750,118 @@ void reset_mac_and_identity(void)
 
 void force_bluetooth_reset(void)
 {
-    conn_clear();
-    atomic_set(&ble_state, BLE_RESETTING);
-    bt_unpair(BT_ID_DEFAULT, NULL);
-    sys_reboot(SYS_REBOOT_COLD);
+    if (atomic_get(&ble_state) != BLE_RESETTING)
+    {
+        atomic_set(&ble_state, BLE_RESETTING);
+        LOG_INF("BLE resetting...");
+        int err = 0;
+        if (current_conn != NULL)
+        {
+            err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+            if (err)
+            {
+                LOG_ERR("Reset disconnect error: %d", err);
+            }
+        }
+        err = bt_unpair(BT_ID_DEFAULT, NULL);
+        if (err)
+        {
+            LOG_ERR("Reset unpair error: %d", err);
+        }
+        sys_reboot(SYS_REBOOT_COLD);
+    }
 }
 
 static void security_work_handler(struct k_work *work)
 {
-    struct bt_conn *conn = current_conn;
-    if (conn != NULL)
+    if (current_conn != NULL)
     {
-        bt_security_t current_security = bt_conn_get_security(conn);
-        if (current_security)
+        bt_conn_ref(current_conn);
+        bt_security_t current_security = bt_conn_get_security(current_conn);
+        if (current_security && current_security < BT_SECURITY_L2)
         {
-            if (current_security < BT_SECURITY_L2)
+            int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
+            if (err)
             {
-                int err = bt_conn_set_security(conn, BT_SECURITY_L2);
+                LOG_ERR("Security work error: %d", err);
+                int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
                 if (err)
                 {
-                    LOG_ERR("Security error: %d", err);
-                    return;
+                    LOG_ERR("Security work disconnect error: %d", err);
                 }
             }
-            atomic_set(&ble_state, BLE_CONNECTED);
-#if BATTERY
-            bat_start_periodic_task();
-#endif
         }
+        bt_conn_unref(current_conn);
     }
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
+    k_work_cancel_delayable(&security_work);
+    bt_le_adv_stop();
     if (err)
     {
         LOG_ERR("Connected error: %d", err);
+        int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        if (err)
+        {
+            LOG_ERR("Connected disconnect error: %d", err);
+        }
         return;
     }
-    atomic_set(&ble_state, BLE_CONNECTING);
-    conn_clear();
+    if (current_conn)
+    {
+        bt_conn_unref(current_conn);
+    }
     current_conn = bt_conn_ref(conn);
     k_work_reschedule(&security_work, K_MSEC(DELAY_SECURITY_WORK));
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-    atomic_set(&ble_state, BLE_DISCONNECTING);
-    conn_clear();
     if (reason)
     {
         LOG_DBG("Disconnected reason %d", reason);
     }
-    if (reason == BT_HCI_ERR_REMOTE_POWER_OFF)
+    k_work_cancel_delayable(&security_work);
+    bt_le_adv_stop();
+    if (conn == current_conn)
     {
-        keyboard_deep_sleep();
-        return;
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+        ble_notify_enabled = false;
+        boot_notify_enabled = false;
+        protocol_mode = 0x01;
     }
-    ble_notify_enabled = false;
-    boot_notify_enabled = false;
-    protocol_mode = 0x01;
-    force_bluetooth_reset();
+    else
+    {
+        bt_conn_unref(conn);
+    }
+    if (reason == BT_HCI_ERR_REMOTE_POWER_OFF || reason == BT_HCI_ERR_CONN_TIMEOUT)
+    {
+        // TODO sleep or advertising?
+        // k_work_submit(&deep_sleep_work);
+    }
+    else 
+    {
+        start_advertising();
+    }
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
                              enum bt_security_err err)
 {
+    LOG_INF("Security changed");
     if (err)
     {
         LOG_ERR("Change security error: %d", err);
         bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
         return;
     }
-    if (conn != NULL)
-    {
-        conn_clear();
-        current_conn = bt_conn_ref(conn);
-    }
     if (current_conn != NULL && level >= BT_SECURITY_L2)
     {
+        LOG_INF("Security changed L2 OK!");
         atomic_set(&ble_state, BLE_CONNECTED);
-#if BATTERY
-        bat_start_periodic_task();
-#endif
     }
 }
 
@@ -861,10 +876,15 @@ static void auth_cancel(struct bt_conn *conn)
     LOG_ERR("Auth cancel");
     bt_conn_disconnect(conn, BT_HCI_ERR_OP_CANCELLED_BY_HOST);
 }
+
 static void pairing_complete(struct bt_conn *conn, bool bonded)
 {
     LOG_INF("Pairing complete!");
+#if BATTERY
+    bat_start_periodic_task();
+#endif
 }
+
 static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
 {
     LOG_ERR("Pairing error: %d", err);
@@ -878,8 +898,7 @@ static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
     }
     else
     {
-        conn_clear();
-        start_advertising();
+        bt_conn_disconnect(conn, BT_HCI_ERR_HOST_BUSY_PAIRING);
     }
 }
 
