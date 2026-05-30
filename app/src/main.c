@@ -633,8 +633,13 @@ static void start_advertising(void)
         ARRAY_SIZE(ad),
         sd,
         ARRAY_SIZE(sd));
-    if (!err || err == -EALREADY)
+    if (err && err != -EALREADY)
     {
+        LOG_ERR("Advertising error: %d", err);
+    }
+    else
+    {
+        LOG_INF("Advertising...");
         atomic_set(&ble_state, BLE_ADVERTISING);
     }
 }
@@ -721,11 +726,6 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
-    if (current_conn)
-    {
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
-    }
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
@@ -740,6 +740,17 @@ void keyboard_deep_sleep(void)
 |* ============= Connection Management ============= *|
 \* ================================================= */
 
+void conn_clear(void)
+{
+    k_work_cancel_delayable(&security_work);
+    bt_le_adv_stop();
+    if (current_conn != NULL)
+    {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+}
+
 void reset_mac_and_identity(void)
 {
     int id = bt_id_create(NULL, NULL);
@@ -753,103 +764,89 @@ void reset_mac_and_identity(void)
 
 void force_bluetooth_reset(void)
 {
-    if (atomic_get(&ble_state) != BLE_RESETTING)
-    {
-        if (atomic_get(&ble_state) == BLE_ADVERTISING)
-        {
-            bt_le_adv_stop();
-        }
-        if (atomic_get(&ble_state) == BLE_SECURITY)
-        {
-            k_work_cancel_delayable(&security_work);
-        }
-        atomic_set(&ble_state, BLE_RESETTING);
-        bt_unpair(BT_ID_DEFAULT, NULL);
-        sys_reboot(SYS_REBOOT_COLD);
-    }
+    conn_clear();
+    atomic_set(&ble_state, BLE_RESETTING);
+    bt_unpair(BT_ID_DEFAULT, NULL);
+    sys_reboot(SYS_REBOOT_COLD);
 }
 
 static void security_work_handler(struct k_work *work)
 {
-    if (current_conn && atomic_get(&ble_state) == BLE_SECURITY)
+    struct bt_conn *conn = current_conn;
+    if (conn != NULL)
     {
-        atomic_set(&ble_state, BLE_CONNECTING);
-        bt_security_t current_security = bt_conn_get_security(current_conn);
+        bt_security_t current_security = bt_conn_get_security(conn);
         if (current_security)
         {
             if (current_security < BT_SECURITY_L2)
             {
-                bt_conn_set_security(current_conn, BT_SECURITY_L2);
+                int err = bt_conn_set_security(conn, BT_SECURITY_L2);
+                if (err)
+                {
+                    LOG_ERR("Security error: %d", err);
+                    return;
+                }
             }
-            else
-            {
-                atomic_set(&ble_state, BLE_CONNECTED);
+            atomic_set(&ble_state, BLE_CONNECTED);
 #if BATTERY
-                bat_start_periodic_task();
+            bat_start_periodic_task();
 #endif
-            }
         }
     }
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
-    if (err || atomic_get(&ble_state) != BLE_ADVERTISING)
+    if (err)
     {
+        LOG_ERR("Connected error: %d", err);
         return;
     }
     atomic_set(&ble_state, BLE_CONNECTING);
-    if (current_conn != conn)
-    {
-        bt_conn_unref(current_conn);
-        current_conn = bt_conn_ref(conn);
-    }
+    conn_clear();
+    current_conn = bt_conn_ref(conn);
     k_work_reschedule(&security_work, K_MSEC(DELAY_SECURITY_WORK));
-    atomic_set(&ble_state, BLE_SECURITY);
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-    if (current_conn == conn)
-    {
-        if (atomic_get(&ble_state) == BLE_SECURITY)
-        {
-            k_work_cancel_delayable(&security_work);
-        }
-        if (atomic_get(&ble_state) == BLE_CONNECTED &&
-            (reason == BT_HCI_ERR_REMOTE_USER_TERM_CONN ||
-             reason == BT_HCI_ERR_REMOTE_POWER_OFF))
-        {
-            keyboard_deep_sleep();
-            return;
-        }
-    }
     atomic_set(&ble_state, BLE_DISCONNECTING);
-    bt_conn_unref(current_conn);
-    current_conn = NULL;
+    conn_clear();
+    if (reason)
+    {
+        LOG_DBG("Disconnected reason %d", reason);
+    }
+    if (reason == BT_HCI_ERR_REMOTE_POWER_OFF)
+    {
+        keyboard_deep_sleep();
+        return;
+    }
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
-    atomic_set(&ble_state, BLE_IDLE);
-    start_advertising();
+    force_bluetooth_reset();
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
                              enum bt_security_err err)
 {
-    if (atomic_get(&ble_state) == BLE_CONNECTING)
+    if (err)
     {
-        if (err)
-        {
-            bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
-        }
-        else if (level >= BT_SECURITY_L2)
-        {
-            atomic_set(&ble_state, BLE_CONNECTED);
+        LOG_ERR("Change security error: %d", err);
+        bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
+        return;
+    }
+    if (conn != NULL)
+    {
+        conn_clear();
+        current_conn = bt_conn_ref(conn);
+    }
+    if (current_conn != NULL && level >= BT_SECURITY_L2)
+    {
+        atomic_set(&ble_state, BLE_CONNECTED);
 #if BATTERY
-            bat_start_periodic_task();
+        bat_start_periodic_task();
 #endif
-        }
     }
 }
 
@@ -859,9 +856,32 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
     .security_changed = security_changed,
 };
 
-static void auth_cancel(struct bt_conn *conn) {}
-static void pairing_complete(struct bt_conn *conn, bool bonded) {}
-static void pairing_failed(struct bt_conn *conn, enum bt_security_err err) {}
+static void auth_cancel(struct bt_conn *conn)
+{
+    LOG_ERR("Auth cancel");
+    bt_conn_disconnect(conn, BT_HCI_ERR_OP_CANCELLED_BY_HOST);
+}
+static void pairing_complete(struct bt_conn *conn, bool bonded)
+{
+    LOG_INF("Pairing complete!");
+}
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
+{
+    LOG_ERR("Pairing error: %d", err);
+    if (err == BT_SECURITY_ERR_PAIR_NOT_SUPPORTED)
+    {
+        bt_conn_disconnect(conn, BT_HCI_ERR_PAIRING_NOT_SUPPORTED);
+    }
+    else if (err == BT_SECURITY_ERR_PAIR_NOT_ALLOWED)
+    {
+        bt_conn_disconnect(conn, BT_HCI_ERR_PAIRING_NOT_ALLOWED);
+    }
+    else
+    {
+        conn_clear();
+        start_advertising();
+    }
+}
 
 static struct bt_conn_auth_cb auth_cb = {
     .cancel = auth_cancel,
@@ -1025,7 +1045,6 @@ static int release_all()
 
 static int press_key(uint16_t keycode, bool tap_hold_key)
 {
-    LOG_DBG("Key pressed");
     last_activity = k_uptime_get_32();
     uint8_t idx = 0;
     switch (keycode & 0xF000)
@@ -1361,13 +1380,13 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&cols[c]))
         {
-            // LOG_ERR("Col %d GPIO not ready", c);
+            LOG_ERR("Col %d GPIO not ready", c);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&cols[c], GPIO_OUTPUT_INACTIVE);
         if (err)
         {
-            // LOG_ERR("Col %d config failed (err %d)", c, err);
+            LOG_ERR("Col %d config failed (err %d)", c, err);
             return err;
         }
         abs_cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
@@ -1380,13 +1399,13 @@ int pins_init(void)
         rows[r].dt_flags = GPIO_ACTIVE_HIGH;
         if (!gpio_is_ready_dt(&rows[r]))
         {
-            // LOG_ERR("Row %d GPIO not ready", r);
+            LOG_ERR("Row %d GPIO not ready", r);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
         if (err)
         {
-            // LOG_ERR("Row %d config failed (err %d)", r, err);
+            LOG_ERR("Row %d config failed (err %d)", r, err);
             return err;
         }
         abs_rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
@@ -1397,13 +1416,13 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&encoders[e]))
         {
-            // LOG_ERR("Encoder pin %d GPIO not ready", e);
+            LOG_ERR("Encoder pin %d GPIO not ready", e);
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
         if (err)
         {
-            // LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
+            LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
             return err;
         }
     }
@@ -1415,13 +1434,13 @@ int pins_init(void)
     power_ext.dt_flags = GPIO_ACTIVE_HIGH;
     if (!gpio_is_ready_dt(&power_ext))
     {
-        // LOG_ERR("External power GPIO not ready");
+        LOG_ERR("External power GPIO not ready");
         return -ENODEV;
     }
     err = gpio_pin_configure_dt(&power_ext, GPIO_OUTPUT_ACTIVE);
     if (err)
     {
-        // LOG_ERR("External power config failed (err %d)", err);
+        LOG_ERR("External power config failed (err %d)", err);
         return err;
     }
 #endif
@@ -1751,7 +1770,7 @@ int main(void)
     err = settings_subsys_init();
     if (err)
     {
-        // LOG_ERR("Error to init settings subsistem (err %d)", err);
+        LOG_ERR("Error to init settings subsistem (err %d)", err);
     }
 
 #if USB
@@ -1786,8 +1805,6 @@ int main(void)
     k_msleep(200);
 #endif
 
-    start_advertising();
-
     debounce_init();
     reports_init();
     keymap_init();
@@ -1811,6 +1828,8 @@ int main(void)
         k_msleep(1000);
         LOG_INF("BMK Keyboard started!");
     }
+
+    start_advertising();
 
     while (1)
     {
