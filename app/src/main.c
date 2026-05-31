@@ -74,11 +74,10 @@ static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
-static struct k_work_delayable security_work;
 static bool awake = false;
 static bool deep_sleep = false;
+static bool ble_resetting = false;
 
-static atomic_t ble_state = BLE_IDLE;
 static bool ble_notify_enabled;
 static bool boot_notify_enabled;
 static struct bt_conn *current_conn = NULL;
@@ -636,11 +635,12 @@ static void start_advertising(void)
     if (err && err != -EALREADY)
     {
         LOG_ERR("Advertising error: %d", err);
+        k_msleep(200);
+        sys_reboot(SYS_REBOOT_COLD);
     }
     else
     {
         LOG_INF("Advertising...");
-        atomic_set(&ble_state, BLE_ADVERTISING);
     }
 }
 
@@ -653,9 +653,10 @@ static void start_slow_advertising(void)
         ARRAY_SIZE(ad),
         sd,
         ARRAY_SIZE(sd));
-    if (!err || err == -EALREADY)
+    if (err && err != -EALREADY)
     {
-        atomic_set(&ble_state, BLE_ADVERTISING);
+        k_msleep(200);
+        sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
@@ -726,9 +727,7 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
-    bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
     bt_disable();
-    atomic_set(&ble_state, BLE_DISABLED);
     last_activity = -(SLEEP_TIMEOUT * 1000);
     deep_sleep = true;
 }
@@ -750,9 +749,9 @@ void reset_mac_and_identity(void)
 
 void force_bluetooth_reset(void)
 {
-    if (atomic_get(&ble_state) != BLE_RESETTING)
+    if (!ble_resetting)
     {
-        atomic_set(&ble_state, BLE_RESETTING);
+        ble_resetting = true;
         LOG_INF("BLE resetting...");
         int err = 0;
         if (current_conn != NULL)
@@ -768,36 +767,14 @@ void force_bluetooth_reset(void)
         {
             LOG_ERR("Reset unpair error: %d", err);
         }
+        k_msleep(200);
         sys_reboot(SYS_REBOOT_COLD);
-    }
-}
-
-static void security_work_handler(struct k_work *work)
-{
-    if (current_conn != NULL)
-    {
-        bt_conn_ref(current_conn);
-        bt_security_t current_security = bt_conn_get_security(current_conn);
-        if (current_security && current_security < BT_SECURITY_L2)
-        {
-            int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
-            if (err)
-            {
-                LOG_ERR("Security work error: %d", err);
-                int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-                if (err)
-                {
-                    LOG_ERR("Security work disconnect error: %d", err);
-                }
-            }
-        }
-        bt_conn_unref(current_conn);
     }
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
-    k_work_cancel_delayable(&security_work);
+    LOG_INF("Connected...");
     bt_le_adv_stop();
     if (err)
     {
@@ -806,6 +783,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
         if (err)
         {
             LOG_ERR("Connected disconnect error: %d", err);
+            start_advertising();
         }
         return;
     }
@@ -814,16 +792,29 @@ static void connected(struct bt_conn *conn, uint8_t err)
         bt_conn_unref(current_conn);
     }
     current_conn = bt_conn_ref(conn);
-    k_work_reschedule(&security_work, K_MSEC(DELAY_SECURITY_WORK));
+    bt_security_t current_security = bt_conn_get_security(current_conn);
+    if (current_security && current_security < BT_SECURITY_L2)
+    {
+        int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
+        if (err)
+        {
+            LOG_ERR("Security work error: %d", err);
+            int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+            if (err)
+            {
+                LOG_ERR("Security work disconnect error: %d", err);
+                start_advertising();
+            }
+        }
+    }
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     if (reason)
     {
-        LOG_DBG("Disconnected reason %d", reason);
+        LOG_INF("Disconnected reason %d", reason);
     }
-    k_work_cancel_delayable(&security_work);
     bt_le_adv_stop();
     if (conn == current_conn)
     {
@@ -837,15 +828,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     {
         bt_conn_unref(conn);
     }
-    if (reason == BT_HCI_ERR_REMOTE_POWER_OFF || reason == BT_HCI_ERR_CONN_TIMEOUT)
-    {
-        // TODO sleep or advertising?
-        // k_work_submit(&deep_sleep_work);
-    }
-    else 
-    {
-        start_advertising();
-    }
+    start_advertising();
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
@@ -861,7 +844,6 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
     if (current_conn != NULL && level >= BT_SECURITY_L2)
     {
         LOG_INF("Security changed L2 OK!");
-        atomic_set(&ble_state, BLE_CONNECTED);
     }
 }
 
@@ -922,7 +904,6 @@ int keyboard_deep_sleep_wakeup(void)
     {
         return err;
     }
-    atomic_set(&ble_state, BLE_IDLE);
 
     bt_conn_auth_cb_register(&auth_cb);
     bt_conn_auth_info_cb_register(&auth_info_cb);
@@ -967,7 +948,7 @@ void keyboard_wakeup(void)
 #if BATTERY
     bat_start_periodic_task();
 #endif
-    if (deep_sleep || atomic_get(&ble_state) == BLE_IDLE)
+    if (deep_sleep)
     {
         int err = keyboard_deep_sleep_wakeup();
         if (err)
@@ -1771,7 +1752,6 @@ k_tid_t threads_init()
 
 void delayed_init(void)
 {
-    k_work_init_delayable(&security_work, security_work_handler);
 #if RGB || POWER_EXT
     k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
 #endif
