@@ -96,6 +96,10 @@
 #define BATTERY true
 #endif
 
+#ifndef LOGS
+#define LOGS false
+#endif
+
 struct key
 {
     uint16_t kc[LAYERS];

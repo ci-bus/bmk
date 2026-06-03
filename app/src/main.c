@@ -6,7 +6,9 @@
 
 #include "main.h"
 
+#if LOGS
 LOG_MODULE_REGISTER(bmk, LOG_LEVEL);
+#endif
 
 static struct gpio_dt_spec cols[MATRIX_COLS] = {0};
 static struct gpio_dt_spec rows[MATRIX_ROWS] = {0};
@@ -634,13 +636,17 @@ static void start_advertising(void)
         ARRAY_SIZE(sd));
     if (err && err != -EALREADY)
     {
+#if LOGS
         LOG_ERR("Advertising error: %d", err);
+#endif
         k_msleep(200);
         sys_reboot(SYS_REBOOT_COLD);
     }
     else
     {
+#if LOGS
         LOG_INF("Advertising...");
+#endif
     }
 }
 
@@ -752,20 +758,26 @@ void force_bluetooth_reset(void)
     if (!ble_resetting)
     {
         ble_resetting = true;
+#if LOGS
         LOG_INF("BLE resetting...");
+#endif
         int err = 0;
         if (current_conn != NULL)
         {
             err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
             if (err)
             {
+#if LOGS
                 LOG_ERR("Reset disconnect error: %d", err);
+#endif
             }
         }
         err = bt_unpair(BT_ID_DEFAULT, NULL);
         if (err)
         {
+#if LOGS
             LOG_ERR("Reset unpair error: %d", err);
+#endif
         }
         k_msleep(200);
         sys_reboot(SYS_REBOOT_COLD);
@@ -774,15 +786,21 @@ void force_bluetooth_reset(void)
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
+#if LOGS
     LOG_INF("Connected...");
+#endif
     bt_le_adv_stop();
     if (err)
     {
+#if LOGS
         LOG_ERR("Connected error: %d", err);
+#endif
         int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         if (err)
         {
+#if LOGS
             LOG_ERR("Connected disconnect error: %d", err);
+#endif
             start_advertising();
         }
         return;
@@ -798,11 +816,15 @@ static void connected(struct bt_conn *conn, uint8_t err)
         int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
         if (err)
         {
+#if LOGS
             LOG_ERR("Security work error: %d", err);
+#endif
             int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
             if (err)
             {
+#if LOGS
                 LOG_ERR("Security work disconnect error: %d", err);
+#endif
                 start_advertising();
             }
         }
@@ -813,7 +835,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     if (reason)
     {
+#if LOGS
         LOG_INF("Disconnected reason %d", reason);
+#endif
     }
     bt_le_adv_stop();
     if (conn == current_conn)
@@ -834,16 +858,22 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 static void security_changed(struct bt_conn *conn, bt_security_t level,
                              enum bt_security_err err)
 {
+#if LOGS
     LOG_INF("Security changed");
+#endif
     if (err)
     {
+#if LOGS
         LOG_ERR("Change security error: %d", err);
+#endif
         bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
         return;
     }
     if (current_conn != NULL && level >= BT_SECURITY_L2)
     {
+#if LOGS
         LOG_INF("Security changed L2 OK!");
+#endif
     }
 }
 
@@ -855,13 +885,17 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 
 static void auth_cancel(struct bt_conn *conn)
 {
+#if LOGS
     LOG_ERR("Auth cancel");
+#endif
     bt_conn_disconnect(conn, BT_HCI_ERR_OP_CANCELLED_BY_HOST);
 }
 
 static void pairing_complete(struct bt_conn *conn, bool bonded)
 {
+#if LOGS
     LOG_INF("Pairing complete!");
+#endif
 #if BATTERY
     bat_start_periodic_task();
 #endif
@@ -869,7 +903,9 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 
 static void pairing_failed(struct bt_conn *conn, enum bt_security_err err)
 {
+#if LOGS
     LOG_ERR("Pairing error: %d", err);
+#endif
     if (err == BT_SECURITY_ERR_PAIR_NOT_SUPPORTED)
     {
         bt_conn_disconnect(conn, BT_HCI_ERR_PAIRING_NOT_SUPPORTED);
@@ -1380,13 +1416,17 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&cols[c]))
         {
+#if LOGS
             LOG_ERR("Col %d GPIO not ready", c);
+#endif
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&cols[c], GPIO_OUTPUT_INACTIVE);
         if (err)
         {
+#if LOGS
             LOG_ERR("Col %d config failed (err %d)", c, err);
+#endif
             return err;
         }
         abs_cols_pins[c] = NRF_GPIO_PIN_MAP((cols[c].port == GPIO1), cols[c].pin);
@@ -1399,13 +1439,17 @@ int pins_init(void)
         rows[r].dt_flags = GPIO_ACTIVE_HIGH;
         if (!gpio_is_ready_dt(&rows[r]))
         {
+#if LOGS
             LOG_ERR("Row %d GPIO not ready", r);
+#endif
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&rows[r], GPIO_INPUT | GPIO_PULL_DOWN);
         if (err)
         {
+#if LOGS
             LOG_ERR("Row %d config failed (err %d)", r, err);
+#endif
             return err;
         }
         abs_rows_pins[r] = NRF_GPIO_PIN_MAP((rows[r].port == GPIO1), rows[r].pin);
@@ -1416,13 +1460,17 @@ int pins_init(void)
     {
         if (!gpio_is_ready_dt(&encoders[e]))
         {
+#if LOGS
             LOG_ERR("Encoder pin %d GPIO not ready", e);
+#endif
             return -ENODEV;
         }
         err = gpio_pin_configure_dt(&encoders[e], GPIO_INPUT | GPIO_PULL_UP);
         if (err)
         {
+#if LOGS
             LOG_ERR("Encoder pin %d config failed (err %d)", e, err);
+#endif
             return err;
         }
     }
@@ -1434,13 +1482,17 @@ int pins_init(void)
     power_ext.dt_flags = GPIO_ACTIVE_HIGH;
     if (!gpio_is_ready_dt(&power_ext))
     {
+#if LOGS
         LOG_ERR("External power GPIO not ready");
+#endif
         return -ENODEV;
     }
     err = gpio_pin_configure_dt(&power_ext, GPIO_OUTPUT_ACTIVE);
     if (err)
     {
+#if LOGS
         LOG_ERR("External power config failed (err %d)", err);
+#endif
         return err;
     }
 #endif
@@ -1769,7 +1821,9 @@ int main(void)
     err = settings_subsys_init();
     if (err)
     {
+#if LOGS
         LOG_ERR("Error to init settings subsistem (err %d)", err);
+#endif
     }
 
 #if USB
@@ -1825,7 +1879,9 @@ int main(void)
     if (usb_connected)
     {
         k_msleep(1000);
+#if LOGS
         LOG_INF("BMK Keyboard started!");
+#endif
     }
 
     start_advertising();

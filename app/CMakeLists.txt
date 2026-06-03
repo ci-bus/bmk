@@ -22,11 +22,16 @@ if(EXISTS ${KBD_HEADER})
 
     message(STATUS "RGB enabled for ${KEYBOARD}: port=${RGB_PORT} pin=${RGB_PIN} leds=${RGB_LEDS}")
     list(APPEND EXTRA_CONF_FILE "boards/arm/common/rgb.conf")
-    list(APPEND DTC_OVERLAY_FILE "keyboards/common/rgb.overlay")
+    list(APPEND DTC_OVERLAY_FILE "boards/arm/common/rgb.overlay")
     list(APPEND DTS_EXTRA_CPPFLAGS
       "-DRGB_PORT=${RGB_PORT}"
       "-DRGB_PIN=${RGB_PIN}"
       "-DRGB_LEDS=${RGB_LEDS}")
+  endif()
+
+  if(_kbd_h MATCHES "#define[ \t]+LOGS[ \t]+true")
+    list(APPEND EXTRA_CONF_FILE "boards/arm/common/logs.conf")
+    list(APPEND DTC_OVERLAY_FILE "boards/arm/common/logs.overlay")
   endif()
 endif()
 
