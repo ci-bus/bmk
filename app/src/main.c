@@ -79,6 +79,7 @@ static bool some_held_mod_keys = false;
 static bool awake = false;
 static bool deep_sleep = false;
 static bool ble_resetting = false;
+static bmk_status_type_t ble_status = BMK_DISCONNECTED;
 
 static bool ble_notify_enabled;
 static bool boot_notify_enabled;
@@ -596,6 +597,9 @@ static void bat_timer_handler(struct k_timer *dummy)
 K_TIMER_DEFINE(bat_periodic_timer, bat_timer_handler, NULL);
 void bat_start_periodic_task(void)
 {
+#if LOGS
+    LOG_INF("Level battery task starting...");
+#endif
     k_timer_start(&bat_periodic_timer, K_NO_WAIT, K_SECONDS(BAT_UPDATE));
 }
 void bat_stop_periodic_task(void)
@@ -627,6 +631,7 @@ static const struct bt_data sd[] = {
 
 static void start_advertising(void)
 {
+    ble_status = BMK_DISCONNECTED;
     bt_le_adv_stop();
     int err = bt_le_adv_start(
         BT_LE_ADV_CONN_FOREVER,
@@ -640,7 +645,7 @@ static void start_advertising(void)
         LOG_ERR("Advertising error: %d", err);
 #endif
         k_msleep(200);
-        sys_reboot(SYS_REBOOT_COLD);
+        // sys_reboot(SYS_REBOOT_COLD);
     }
     else
     {
@@ -662,7 +667,7 @@ static void start_slow_advertising(void)
     if (err && err != -EALREADY)
     {
         k_msleep(200);
-        sys_reboot(SYS_REBOOT_COLD);
+        // sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
@@ -692,6 +697,9 @@ void sleep_init(void)
 
 void keyboard_sleep(void)
 {
+#if LOGS
+    LOG_INF("Sleeping...");
+#endif
 #if BATTERY
     bat_stop_periodic_task();
 #endif
@@ -733,7 +741,17 @@ void keyboard_sleep(void)
 
 void keyboard_deep_sleep(void)
 {
+#if LOGS
+    LOG_INF("Deep sleeping...");
+#endif
     bt_disable();
+#if USB
+    if (usb_connected)
+    {
+        usb_disable();
+        usb_connected = false;
+    }
+#endif
     last_activity = -(SLEEP_TIMEOUT * 1000);
     deep_sleep = true;
 }
@@ -742,8 +760,55 @@ void keyboard_deep_sleep(void)
 |* ============= Connection Management ============= *|
 \* ================================================= */
 
+/*
+if (ble_status != BMK_READY)
+{
+    k_msleep(200);
+    switch (ble_status)
+    {
+    case BMK_CONNECTED:
+#if LOGS
+        LOG_INF("Getting security...");
+#endif
+        if (current_conn != NULL)
+        {
+
+        }
+        else
+        {
+            ble_status = BMK_ERROR;
+        }
+        break;
+    case BMK_PAIRED:
+#if BATTERY
+        bat_start_periodic_task();
+#endif
+
+        ble_status = BMK_READY;
+        break;
+    case BMK_ERROR:
+        if (current_conn != NULL)
+        {
+            err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+            if (err)
+            {
+#if LOGS
+                LOG_ERR("Reset disconnect error: %d", err);
+#endif
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+*/
+
 void reset_mac_and_identity(void)
 {
+#if LOGS
+    LOG_INF("MAC identity resetting...");
+#endif
     int id = bt_id_create(NULL, NULL);
     if (id < 0)
     {
@@ -780,7 +845,7 @@ void force_bluetooth_reset(void)
 #endif
         }
         k_msleep(200);
-        sys_reboot(SYS_REBOOT_COLD);
+        // sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
@@ -790,12 +855,21 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("Connected...");
 #endif
     bt_le_adv_stop();
+
+    const bt_addr_le_t *dst_addr = bt_conn_get_dst(conn);
+    char addr_str[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(dst_addr, addr_str, sizeof(addr_str));
+
+#if LOGS
+    LOG_INF("Dispositivo conectado con éxito. Dirección MAC: %s", addr_str);
+#endif
+
     if (err)
     {
 #if LOGS
         LOG_ERR("Connected error: %d", err);
 #endif
-        int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        int err = bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         if (err)
         {
 #if LOGS
@@ -805,27 +879,30 @@ static void connected(struct bt_conn *conn, uint8_t err)
         }
         return;
     }
-    if (current_conn)
-    {
-        bt_conn_unref(current_conn);
-    }
     current_conn = bt_conn_ref(conn);
+    k_msleep(50);
     bt_security_t current_security = bt_conn_get_security(current_conn);
-    if (current_security && current_security < BT_SECURITY_L2)
+    if (current_security)
     {
-        int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
-        if (err)
+        if (current_security < BT_SECURITY_L2)
         {
 #if LOGS
-            LOG_ERR("Security work error: %d", err);
+            LOG_INF("Setting L2 security...");
 #endif
-            int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+            int err = bt_conn_set_security(current_conn, BT_SECURITY_L2);
             if (err)
             {
 #if LOGS
-                LOG_ERR("Security work disconnect error: %d", err);
+                LOG_ERR("Security work error: %d", err);
 #endif
-                start_advertising();
+                int err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+                if (err)
+                {
+#if LOGS
+                    LOG_ERR("Security work disconnect error: %d", err);
+#endif
+                    start_advertising();
+                }
             }
         }
     }
@@ -839,19 +916,11 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         LOG_INF("Disconnected reason %d", reason);
 #endif
     }
-    bt_le_adv_stop();
-    if (conn == current_conn)
-    {
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
-        ble_notify_enabled = false;
-        boot_notify_enabled = false;
-        protocol_mode = 0x01;
-    }
-    else
-    {
-        bt_conn_unref(conn);
-    }
+    bt_conn_unref(conn);
+    current_conn = NULL;
+    ble_notify_enabled = false;
+    boot_notify_enabled = false;
+    protocol_mode = 0x01;
     start_advertising();
 }
 
@@ -866,14 +935,20 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 #if LOGS
         LOG_ERR("Change security error: %d", err);
 #endif
-        bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
-        return;
+        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
     }
-    if (current_conn != NULL && level >= BT_SECURITY_L2)
+    else
     {
+        if (level >= BT_SECURITY_L2)
+        {
 #if LOGS
-        LOG_INF("Security changed L2 OK!");
+            LOG_INF("Security changed L2 OK!");
 #endif
+            if (current_conn == NULL)
+            {
+                current_conn = bt_conn_ref(conn);
+            }
+        }
     }
 }
 
@@ -888,7 +963,7 @@ static void auth_cancel(struct bt_conn *conn)
 #if LOGS
     LOG_ERR("Auth cancel");
 #endif
-    bt_conn_disconnect(conn, BT_HCI_ERR_OP_CANCELLED_BY_HOST);
+    // bt_conn_disconnect(conn, BT_HCI_ERR_OP_CANCELLED_BY_HOST);
 }
 
 static void pairing_complete(struct bt_conn *conn, bool bonded)
@@ -897,6 +972,7 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
     LOG_INF("Pairing complete!");
 #endif
 #if BATTERY
+    k_msleep(50);
     bat_start_periodic_task();
 #endif
 }
@@ -935,6 +1011,9 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 
 int keyboard_deep_sleep_wakeup(void)
 {
+#if LOGS
+    LOG_INF("Deep waking up...");
+#endif
     int err = bt_enable(NULL);
     if (err)
     {
@@ -946,16 +1025,19 @@ int keyboard_deep_sleep_wakeup(void)
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     settings_load();
+    k_msleep(100);
 #endif
 
     start_advertising();
     deep_sleep = false;
-
     return 0;
 }
 
 void keyboard_wakeup(void)
 {
+#if LOGS
+    LOG_INF("Waking up...");
+#endif
     for (int c = 0; c < MATRIX_COLS; c++)
     {
         gpio_pin_set_dt(&cols[c], 0);
@@ -986,11 +1068,7 @@ void keyboard_wakeup(void)
 #endif
     if (deep_sleep)
     {
-        int err = keyboard_deep_sleep_wakeup();
-        if (err)
-        {
-            sys_reboot(SYS_REBOOT_COLD);
-        }
+        keyboard_deep_sleep_wakeup();
     }
 #if USB
     bmk_check_usb();
@@ -1855,7 +1933,7 @@ int main(void)
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     settings_load();
-    k_msleep(200);
+    k_msleep(100);
 #endif
 
     debounce_init();
@@ -1918,6 +1996,10 @@ int main(void)
 
 void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 {
+#if LOGS
+    LOG_ERR("COLD Resetting...");
+#endif
+    k_msleep(200);
     sys_reboot(SYS_REBOOT_COLD);
     CODE_UNREACHABLE;
 }

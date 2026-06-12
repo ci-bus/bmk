@@ -145,4 +145,14 @@ struct timeout_tapped_keys
     uint8_t key_idx;
 };
 
+typedef enum
+{
+    BMK_DISCONNECTED = 0,
+    BMK_CONNECTED,
+    BMK_SECURITY,
+    BMK_PAIRED,
+    BMK_READY,
+    BMK_ERROR
+} bmk_status_type_t;
+
 #endif

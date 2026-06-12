@@ -14,7 +14,7 @@
 #define RGB_LEDS 15
 #define RGB_EFFECTS false
 #define SLEEP_TIMEOUT 300
-#define LOGS false
+#define LOGS true
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
 
