@@ -87,16 +87,13 @@ static struct bt_conn *current_conn = NULL;
 static uint8_t protocol_mode = 0x01;
 
 /* Advertising parameters: connectable, no timeout */
-#define BT_LE_ADV_CONN_SLOW BT_LE_ADV_PARAM( \
-    BT_LE_ADV_OPT_CONNECTABLE,               \
-    0x0800,                                  \
-    0x0960,                                  \
-    NULL)
 #define BT_LE_ADV_CONN_FOREVER BT_LE_ADV_PARAM( \
     BT_LE_ADV_OPT_CONNECTABLE,                  \
     BT_GAP_ADV_FAST_INT_MIN_2,                  \
     BT_GAP_ADV_FAST_INT_MAX_2,                  \
     NULL)
+
+static struct bt_le_adv_param *param = BT_LE_ADV_CONN_FOREVER;
 
 /* HID modifier bits */
 #define MOD_NONE 0x00
@@ -634,7 +631,7 @@ static void start_advertising(void)
     ble_status = BMK_DISCONNECTED;
     bt_le_adv_stop();
     int err = bt_le_adv_start(
-        BT_LE_ADV_CONN_FOREVER,
+        param,
         ad,
         ARRAY_SIZE(ad),
         sd,
@@ -652,22 +649,6 @@ static void start_advertising(void)
 #if LOGS
         LOG_INF("Advertising...");
 #endif
-    }
-}
-
-static void start_slow_advertising(void)
-{
-    bt_le_adv_stop();
-    int err = bt_le_adv_start(
-        BT_LE_ADV_CONN_SLOW,
-        ad,
-        ARRAY_SIZE(ad),
-        sd,
-        ARRAY_SIZE(sd));
-    if (err && err != -EALREADY)
-    {
-        k_msleep(200);
-        // sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
@@ -760,62 +741,44 @@ void keyboard_deep_sleep(void)
 |* ============= Connection Management ============= *|
 \* ================================================= */
 
-/*
-if (ble_status != BMK_READY)
+void init_mac_identity(bool retry)
 {
-    k_msleep(200);
-    switch (ble_status)
-    {
-    case BMK_CONNECTED:
-#if LOGS
-        LOG_INF("Getting security...");
-#endif
-        if (current_conn != NULL)
-        {
+    bt_addr_le_t addrs[CONFIG_BT_ID_MAX];
+    size_t count = ARRAY_SIZE(addrs);
 
+    bt_id_get(addrs, &count);
+
+    if (count == 0)
+    {
+#if LOGS
+        LOG_WRN("ERROR BT not inited!");
+#endif
+        return;
+    }
+    param->id = (count - 1);
+    char addr_clean_str[BT_ADDR_STR_LEN];
+    bt_addr_to_str(&addrs[param->id].a, addr_clean_str, sizeof(addr_clean_str));
+#if LOGS
+    LOG_INF("[BLE] MAC identity: %s", addr_clean_str);
+#endif
+    if (!retry && count < CONFIG_BT_ID_MAX)
+    {
+        int bt_id = bt_id_create(NULL, NULL);
+
+        if (bt_id > 0)
+        {
+            param->id = bt_id;
         }
         else
         {
-            ble_status = BMK_ERROR;
-        }
-        break;
-    case BMK_PAIRED:
-#if BATTERY
-        bat_start_periodic_task();
-#endif
-
-        ble_status = BMK_READY;
-        break;
-    case BMK_ERROR:
-        if (current_conn != NULL)
-        {
-            err = bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-            if (err)
-            {
+            param->id = BT_ID_DEFAULT;
 #if LOGS
-                LOG_ERR("Reset disconnect error: %d", err);
+            LOG_ERR("ERROR creating MAC identity");
 #endif
-            }
         }
-        break;
-    default:
-        break;
-    }
-}
-*/
 
-void reset_mac_and_identity(void)
-{
-#if LOGS
-    LOG_INF("MAC identity resetting...");
-#endif
-    int id = bt_id_create(NULL, NULL);
-    if (id < 0)
-    {
-        return;
+        init_mac_identity(true);
     }
-    struct bt_le_adv_param param = *BT_LE_ADV_CONN_FOREVER;
-    param.id = (uint8_t)id;
 }
 
 void force_bluetooth_reset(void)
@@ -837,15 +800,25 @@ void force_bluetooth_reset(void)
 #endif
             }
         }
-        err = bt_unpair(BT_ID_DEFAULT, NULL);
+        err = bt_unpair(param->id, NULL);
         if (err)
         {
 #if LOGS
             LOG_ERR("Reset unpair error: %d", err);
 #endif
         }
+#if LOGS
+        LOG_INF("BT ID deleting...");
+#endif
+        int rc = settings_delete("bt/id");
+#if LOGS
+        if (rc)
+        {
+            LOG_ERR("Error deleting ID from flash: %d", rc);
+        }
+#endif
         k_msleep(200);
-        // sys_reboot(SYS_REBOOT_COLD);
+        sys_reboot(SYS_REBOOT_COLD);
     }
 }
 
@@ -861,7 +834,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
     bt_addr_le_to_str(dst_addr, addr_str, sizeof(addr_str));
 
 #if LOGS
-    LOG_INF("Dispositivo conectado con éxito. Dirección MAC: %s", addr_str);
+    LOG_INF("Connected device MAC: %s", addr_str);
+
 #endif
 
     if (err)
@@ -916,12 +890,13 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         LOG_INF("Disconnected reason %d", reason);
 #endif
     }
+    release_all();
     bt_conn_unref(conn);
     current_conn = NULL;
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
-    start_advertising();
+    keyboard_deep_sleep();
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
@@ -1848,7 +1823,7 @@ void sender_thread(void *p1, void *p2, void *p3)
         bool sent = false;
         uint8_t retries = 0;
 
-        while (!sent && retries < 200)
+        while (current_conn != NULL && !sent && retries < 200)
         {
             err = send_report(&report_temp);
 
@@ -1859,7 +1834,7 @@ void sender_thread(void *p1, void *p2, void *p3)
             else
             {
                 retries++;
-                k_sleep(K_MSEC(5));
+                k_msleep(5);
             }
         }
     }
@@ -1935,6 +1910,8 @@ int main(void)
     settings_load();
     k_msleep(100);
 #endif
+
+    init_mac_identity(false);
 
     debounce_init();
     reports_init();
