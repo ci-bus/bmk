@@ -79,7 +79,7 @@ static bool some_held_mod_keys = false;
 static bool awake = false;
 static bool deep_sleep = false;
 static bool ble_resetting = false;
-static bmk_status_type_t ble_status = BMK_DISCONNECTED;
+static bool ble_connected = false;
 
 static bool ble_notify_enabled;
 static bool boot_notify_enabled;
@@ -628,7 +628,6 @@ static const struct bt_data sd[] = {
 
 static void start_advertising(void)
 {
-    ble_status = BMK_DISCONNECTED;
     bt_le_adv_stop();
     int err = bt_le_adv_start(
         param,
@@ -733,7 +732,7 @@ void keyboard_deep_sleep(void)
         usb_connected = false;
     }
 #endif
-    last_activity = -(SLEEP_TIMEOUT * 1000);
+    last_activity = -(SLEEP_TIMEOUT_MS);
     deep_sleep = true;
 }
 
@@ -890,12 +889,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         LOG_INF("Disconnected reason %d", reason);
 #endif
     }
-    release_all();
     bt_conn_unref(conn);
     current_conn = NULL;
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
+    ble_connected = false;
     keyboard_deep_sleep();
 }
 
@@ -946,6 +945,7 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 #if LOGS
     LOG_INF("Pairing complete!");
 #endif
+    ble_connected = true;
 #if BATTERY
     k_msleep(50);
     bat_start_periodic_task();
@@ -1944,7 +1944,7 @@ int main(void)
     while (1)
     {
         int32_t uptime = k_uptime_get_32();
-        if ((uptime - last_activity) > (SLEEP_TIMEOUT * 1000) && !some_pressed_key()
+        if (((ble_connected && (uptime - last_activity) > SLEEP_TIMEOUT_MS) || (!ble_connected && (uptime - last_activity) > SLEEP_TIMEOUT_ADV_MS)) && !some_pressed_key()
 #if USB
             && !usb_connected
 #endif
@@ -1955,7 +1955,7 @@ int main(void)
                 ;
             k_sem_take(&sleep_sem, K_FOREVER);
             keyboard_wakeup();
-            last_activity = uptime;
+            last_activity = k_uptime_get_32();
         }
 #if USB
         else if ((uptime - last_check_usb) > (USB_CHECK_TIMEOUT))

@@ -26,6 +26,11 @@
 #ifndef SLEEP_TIMEOUT
 #define SLEEP_TIMEOUT 5
 #endif
+#ifndef SLEEP_TIMEOUT_ADV
+#define SLEEP_TIMEOUT_ADV 300
+#endif
+#define SLEEP_TIMEOUT_MS (SLEEP_TIMEOUT * 1000)
+#define SLEEP_TIMEOUT_ADV_MS (SLEEP_TIMEOUT_ADV * 1000)
 #ifndef TAP_HOLD_PRESS_DELAY
 #define TAP_HOLD_PRESS_DELAY 175
 #endif
@@ -144,15 +149,5 @@ struct timeout_tapped_keys
     struct k_work_delayable dwork;
     uint8_t key_idx;
 };
-
-typedef enum
-{
-    BMK_DISCONNECTED = 0,
-    BMK_CONNECTED,
-    BMK_SECURITY,
-    BMK_PAIRED,
-    BMK_READY,
-    BMK_ERROR
-} bmk_status_type_t;
 
 #endif
