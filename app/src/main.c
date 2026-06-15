@@ -1152,6 +1152,7 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
         else
         {
             // Temp to debug
+            /*
             switch (keycode)
             {
             case HID_KEY_ESC:
@@ -1182,6 +1183,7 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
                 hsv_to_leds(255, 255, 255);
                 break;
             }
+            */
             // Find free index to send keycode
             for (uint8_t i = 3; i < 9; i++)
             {
