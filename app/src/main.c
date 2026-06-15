@@ -79,7 +79,7 @@ static bool some_held_mod_keys = false;
 static bool awake = false;
 static bool deep_sleep = false;
 static bool ble_resetting = false;
-static bool ble_connected = false;
+static bool ble_advertising = false;
 
 static bool ble_notify_enabled;
 static bool boot_notify_enabled;
@@ -645,6 +645,7 @@ static void start_advertising(void)
     }
     else
     {
+        ble_advertising = true;
 #if LOGS
         LOG_INF("Advertising...");
 #endif
@@ -810,12 +811,14 @@ void force_bluetooth_reset(void)
         LOG_INF("BT ID deleting...");
 #endif
         int rc = settings_delete("bt/id");
-#if LOGS
+
         if (rc)
         {
+#if LOGS
             LOG_ERR("Error deleting ID from flash: %d", rc);
-        }
 #endif
+        }
+
         k_msleep(200);
         sys_reboot(SYS_REBOOT_COLD);
     }
@@ -827,7 +830,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("Connected...");
 #endif
     bt_le_adv_stop();
-
+    ble_advertising = false;
     const bt_addr_le_t *dst_addr = bt_conn_get_dst(conn);
     char addr_str[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(dst_addr, addr_str, sizeof(addr_str));
@@ -894,8 +897,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
-    ble_connected = false;
-    keyboard_deep_sleep();
+    if (!deep_sleep)
+    {
+        keyboard_deep_sleep();
+    }
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
@@ -945,7 +950,6 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 #if LOGS
     LOG_INF("Pairing complete!");
 #endif
-    ble_connected = true;
 #if BATTERY
     k_msleep(50);
     bat_start_periodic_task();
@@ -1944,7 +1948,7 @@ int main(void)
     while (1)
     {
         int32_t uptime = k_uptime_get_32();
-        if (((ble_connected && (uptime - last_activity) > SLEEP_TIMEOUT_MS) || (!ble_connected && (uptime - last_activity) > SLEEP_TIMEOUT_ADV_MS)) && !some_pressed_key()
+        if (((ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_ADV_MS) || (!ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_MS)) && !some_pressed_key()
 #if USB
             && !usb_connected
 #endif
