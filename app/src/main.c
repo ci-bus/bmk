@@ -77,6 +77,7 @@ static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static bool awake = false;
+static struct k_work_delayable deep_sleep_work;
 static bool deep_sleep = false;
 static bool ble_resetting = false;
 static bool ble_advertising = false;
@@ -735,6 +736,11 @@ void keyboard_deep_sleep(void)
 #endif
     last_activity = -(SLEEP_TIMEOUT_MS);
     deep_sleep = true;
+}
+
+static void deep_sleep_delayer(struct k_work *work)
+{
+    keyboard_deep_sleep();
 }
 
 /* ================================================= *\
@@ -1866,6 +1872,7 @@ void delayed_init(void)
 #if RGB || POWER_EXT
     k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
 #endif
+    k_work_init_delayable(&deep_sleep_work, deep_sleep_delayer);
 }
 
 int main(void)
@@ -1959,9 +1966,11 @@ int main(void)
         )
         {
             keyboard_sleep();
+            k_work_reschedule(&deep_sleep_work, K_MINUTES(DEEP_SLEEP_TIMEOUT));
             while (k_sem_take(&sleep_sem, K_NO_WAIT) == 0)
                 ;
             k_sem_take(&sleep_sem, K_FOREVER);
+            k_work_cancel_delayable(&deep_sleep_work);
             keyboard_wakeup();
             last_activity = k_uptime_get_32();
         }
