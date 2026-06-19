@@ -1937,6 +1937,7 @@ int main(void)
     awake = true;
     last_activity = k_uptime_get_32();
 
+#if USB
     if (usb_connected)
     {
         k_msleep(1000);
@@ -1944,6 +1945,7 @@ int main(void)
         LOG_INF("BMK Keyboard started!");
 #endif
     }
+#endif
 
     start_advertising();
 
