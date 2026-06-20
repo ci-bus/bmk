@@ -27,7 +27,7 @@
 #define SLEEP_TIMEOUT_ADV 300
 #endif
 #ifndef SLEEP_TIMEOUT
-#define SLEEP_TIMEOUT 5
+#define SLEEP_TIMEOUT 10
 #endif
 #ifndef DEEP_SLEEP_TIMEOUT
 #define DEEP_SLEEP_TIMEOUT 30
