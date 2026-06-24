@@ -72,6 +72,8 @@ static struct gpio_callback cb_p1;
 static int32_t last_activity = 0;
 
 static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_p, tap_hold_r;
+static uint8_t dynamic_cycle_delay = CYCLE_DELAY;
+static bool gaming_mode = false;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
 static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
@@ -116,13 +118,13 @@ static inline uint8_t modifier_bit(uint16_t keycode)
     return 1 << (((uint8_t)(keycode & 0xFF)) - 0xE0);
 }
 
-static void debounce_init(void)
+static void debounce_init(uint8_t delay)
 {
-    debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    tap_hold_p = TAP_HOLD_PRESS_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
-    tap_hold_r = TAP_HOLD_RELEASE_DELAY * CYCLE_BASE_DELAY / CYCLE_DELAY;
+    debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / delay;
+    debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / delay;
+    debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / delay;
+    tap_hold_p = TAP_HOLD_PRESS_DELAY * CYCLE_BASE_DELAY / delay;
+    tap_hold_r = TAP_HOLD_RELEASE_DELAY * CYCLE_BASE_DELAY / delay;
 }
 
 static void reports_init(void)
@@ -1151,6 +1153,9 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
     case K_KEYBOARD:
         if (is_modifier(keycode))
         {
+            if (gaming_mode && (HID_KEY_LGUI || HID_KEY_RGUI)) {
+                return -1;
+            }
             idx = 1;
             report[idx] |= modifier_bit(keycode);
             add_report_to_send(BMK_KEYBOARD);
@@ -1330,6 +1335,18 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
         case HID_BOOT:
             nrf_power_gpregret_set(NRF_POWER, 0, 0x57);
             sys_reboot(SYS_REBOOT_COLD);
+            break;
+        case HID_GAMING_ON:
+            release_all();
+            gaming_mode = true;
+            dynamic_cycle_delay = GAMING_CYCLE_DELAY;
+            debounce_init(dynamic_cycle_delay);
+            break;
+        case HID_GAMING_OFF:
+            release_all();
+            gaming_mode = false;
+            dynamic_cycle_delay = CYCLE_DELAY;
+            debounce_init(dynamic_cycle_delay);
             break;
         }
         break;
@@ -1926,7 +1943,7 @@ int main(void)
 
     init_mac_identity(false);
 
-    debounce_init();
+    debounce_init(dynamic_cycle_delay);
     reports_init();
     keymap_init();
 
@@ -1982,7 +1999,7 @@ int main(void)
         }
 #endif
         matrix_scan();
-        k_usleep(CYCLE_DELAY);
+        k_usleep(dynamic_cycle_delay);
     }
 
     return 0;
@@ -1990,10 +2007,6 @@ int main(void)
 
 void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 {
-#if LOGS
-    LOG_ERR("COLD Resetting...");
-#endif
-    k_msleep(200);
     sys_reboot(SYS_REBOOT_COLD);
     CODE_UNREACHABLE;
 }

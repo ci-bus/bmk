@@ -23,6 +23,9 @@
 #ifndef CYCLE_DELAY
 #define CYCLE_DELAY CYCLE_BASE_DELAY
 #endif
+#ifndef GAMING_CYCLE_DELAY
+#define GAMING_CYCLE_DELAY 100
+#endif
 #ifndef SLEEP_TIMEOUT_ADV
 #define SLEEP_TIMEOUT_ADV 300
 #endif
