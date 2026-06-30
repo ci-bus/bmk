@@ -62,7 +62,7 @@ static uint8_t battery_percent = 100;
 #endif
 
 #if USB
-static bool usb_connected = true;
+static bool usb_connected = false;
 static int32_t last_check_usb = 0;
 #endif
 
@@ -72,7 +72,7 @@ static struct gpio_callback cb_p1;
 static int32_t last_activity = 0;
 
 static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_p, tap_hold_r;
-static uint8_t dynamic_cycle_delay = CYCLE_DELAY;
+static int dynamic_cycle_delay = CYCLE_DELAY;
 static bool gaming_mode = false;
 static uint8_t current_layer = 0;
 static uint8_t last_layer = 0;
@@ -1153,7 +1153,8 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
     case K_KEYBOARD:
         if (is_modifier(keycode))
         {
-            if (gaming_mode && (HID_KEY_LGUI || HID_KEY_RGUI)) {
+            if (gaming_mode && (HID_KEY_LGUI || HID_KEY_RGUI))
+            {
                 return -1;
             }
             idx = 1;
@@ -1852,7 +1853,7 @@ void sender_thread(void *p1, void *p2, void *p3)
         bool sent = false;
         uint8_t retries = 0;
 
-        while (current_conn != NULL && !sent && retries < 200)
+        while (!sent && retries < 200)
         {
             err = send_report(&report_temp);
 
@@ -1992,7 +1993,7 @@ int main(void)
             last_activity = k_uptime_get_32();
         }
 #if USB
-        else if ((uptime - last_check_usb) > (USB_CHECK_TIMEOUT))
+        if ((uptime - last_check_usb) > (USB_CHECK_TIMEOUT))
         {
             bmk_check_usb();
             last_check_usb = uptime;
