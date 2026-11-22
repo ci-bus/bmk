@@ -697,16 +697,9 @@ void keyboard_sleep(void)
     bmk_check_usb();
 #endif
 
-    for (int r = (MATRIX_ROWS - 1); r >= 0; r--)
+    for (int r = 0; r < MATRIX_ROWS; r++)
     {
-        if (r >= MATRIX_ROWS - 8)
-        {
-            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_TO_ACTIVE);
-        }
-        else
-        {
-            gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_LEVEL_HIGH);
-        }
+        gpio_pin_interrupt_configure_dt(&rows[r], GPIO_INT_EDGE_TO_ACTIVE);
     }
 
 #if ENCODERS
