@@ -71,7 +71,7 @@ static struct gpio_callback cb_p0;
 static struct gpio_callback cb_p1;
 static int32_t last_activity = 0;
 
-static uint8_t debounce_p, debounce_r, debounce_e, tap_hold_p, tap_hold_r;
+static uint16_t debounce_p, debounce_r, debounce_e, tap_hold_p, tap_hold_r;
 static int dynamic_cycle_delay = CYCLE_DELAY;
 static bool gaming_mode = false;
 static uint8_t current_layer = 0;
@@ -118,7 +118,7 @@ static inline uint8_t modifier_bit(uint16_t keycode)
     return 1 << (((uint8_t)(keycode & 0xFF)) - 0xE0);
 }
 
-static void debounce_init(uint8_t delay)
+static void debounce_init(int delay)
 {
     debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / delay;
     debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / delay;

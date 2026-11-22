@@ -118,8 +118,8 @@ struct key
     bool tapped;
     bool held;
     uint8_t debounce_count;
-    uint8_t delay_press_count;
-    uint8_t delay_release_count;
+    uint16_t delay_press_count;
+    uint16_t delay_release_count;
 };
 
 struct encoder_key
