@@ -1,14 +1,15 @@
 # BMK - BLE Mechanical Keyboard Firmware
 
-Custom USB + BLE HID keyboard firmware built with [Zephyr RTOS](https://zephyrproject.org/) for the E73-2G4M08S1C module (nRF52840).
+Custom USB + BLE HID keyboard firmware built with [Zephyr RTOS](https://zephyrproject.org/) for nRF52840 and nRF52833 boards, plus a USB dongle firmware that bridges a BMK keyboard to USB.
 
 ## Features
 
 - **Dual transport**: USB HID when cable connected, BLE HID on battery
 - **Auto VBUS detection**: nRF52840 POWER peripheral detects USB cable at startup
 - **BLE Boot Protocol**: compatible with macOS, iOS, Windows, Linux, Android
-- **BLE advertising**: no timeout, fast interval, auto re-advertise on disconnect
-- **Pairing**: automatic, no PIN required, bonds cleared on startup
+- **BLE advertising**: fast interval after startup and wake-up; after a disconnection, slow interval for 5 minutes and then Bluetooth is turned off until a key is pressed
+- **Pairing**: automatic, no PIN required; the bond is cleared with the `HID_BT_CLEAR` key
+- **USB dongle**: optional dongle firmware that connects to an unbonded keyboard over BLE and replicates it over USB
 - **TX Power**: +8 dBm for maximum Bluetooth range
 
 ## Hardware
@@ -113,17 +114,23 @@ bmk/
 ├── .vscode/
 │   └── tasks.json              # Build/flash tasks
 ├── app/
-│   ├── CMakeLists.txt          # CMake project config
+│   ├── CMakeLists.txt          # CMake project config (keyboard or dongle target)
 │   ├── prj.conf                # Zephyr config (BLE, USB, HID)
 │   ├── west.yml                # Zephyr manifest (dependencies)
-│   ├── boards/
-│   │   └── arm/bmk_board/      # Custom board for E73-2G4M08S1C
-│   │       ├── bmk_board.dts   # Device tree (flash partitions, USB, GPIO)
-│   │       ├── bmk_board_defconfig  # Board defaults (clock, flash, NVS)
-│   │       ├── Kconfig.board   # Board Kconfig definition
-│   │       └── Kconfig.defconfig    # Board Kconfig defaults
+│   ├── boards/arm/
+│   │   ├── common/             # Shared overlays and config (battery, logs, RGB)
+│   │   ├── nrf52833/           # nRF52833 board definition
+│   │   └── nrf52840/           # nRF52840 board definition
+│   ├── keyboards/miguelio/
+│   │   ├── mk60v1/             # Pins, options and keymap
+│   │   └── mk60v2/
 │   └── src/
-│       └── main.c              # Firmware (USB HID + BLE HID + GATT)
+│       ├── main.c              # Keyboard firmware (matrix, USB HID, BLE HID)
+│       ├── main.h              # Keyboard options and defaults
+│       ├── hid.h               # Keycodes and HID report map
+│       ├── link.h              # BMK "free" advertising mark
+│       ├── battery/            # Battery level measurement
+│       └── dongle/             # Dongle firmware and its config
 ```
 
 ## Transport Priority
