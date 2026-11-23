@@ -80,6 +80,8 @@ static held_mod_key_t held_mod_keys[TAP_HOLD_SIZE_ARRAY] = {0};
 static bool some_held_mod_keys = false;
 static bool awake = false;
 static struct k_work_delayable deep_sleep_work;
+static struct k_work_delayable reconnect_work;
+static bool reconnect_waiting = false;
 static bool deep_sleep = false;
 static bool ble_resetting = false;
 static bool ble_advertising = false;
@@ -652,9 +654,11 @@ static bool has_bond(void)
     return bonds > 0;
 }
 
-static void start_advertising(void)
+static void start_advertising(bool slow)
 {
     bool bonded = has_bond();
+    param->interval_min = slow ? BT_GAP_ADV_SLOW_INT_MIN : BT_GAP_ADV_FAST_INT_MIN_2;
+    param->interval_max = slow ? BT_GAP_ADV_SLOW_INT_MAX : BT_GAP_ADV_FAST_INT_MAX_2;
     bt_le_adv_stop();
     int err = bt_le_adv_start(
         param,
@@ -672,7 +676,7 @@ static void start_advertising(void)
     }
     else
     {
-        ble_advertising = true;
+        ble_advertising = !slow;
 #if LOGS
         LOG_INF("Advertising...");
 #endif
@@ -745,6 +749,7 @@ void keyboard_deep_sleep(void)
 #if LOGS
     LOG_INF("Deep sleeping...");
 #endif
+    deep_sleep = true;
     bt_disable();
 #if USB
     if (usb_connected)
@@ -754,11 +759,28 @@ void keyboard_deep_sleep(void)
     }
 #endif
     last_activity = -(SLEEP_TIMEOUT_MS);
-    deep_sleep = true;
 }
 
 static void deep_sleep_delayer(struct k_work *work)
 {
+    keyboard_deep_sleep();
+}
+
+static void reconnect_handler(struct k_work *work)
+{
+    if (current_conn || deep_sleep || ble_resetting)
+    {
+        reconnect_waiting = false;
+        return;
+    }
+    if (!reconnect_waiting)
+    {
+        reconnect_waiting = true;
+        start_advertising(true);
+        k_work_reschedule(&reconnect_work, K_MSEC(SLEEP_TIMEOUT_ADV_MS));
+        return;
+    }
+    reconnect_waiting = false;
     keyboard_deep_sleep();
 }
 
@@ -856,6 +878,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
 #endif
     bt_le_adv_stop();
     ble_advertising = false;
+    reconnect_waiting = false;
+    k_work_cancel_delayable(&reconnect_work);
     const bt_addr_le_t *dst_addr = bt_conn_get_dst(conn);
     char addr_str[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(dst_addr, addr_str, sizeof(addr_str));
@@ -876,7 +900,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 #if LOGS
             LOG_ERR("Connected disconnect error: %d", err);
 #endif
-            start_advertising();
+            start_advertising(false);
         }
         return;
     }
@@ -902,7 +926,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 #if LOGS
                     LOG_ERR("Security work disconnect error: %d", err);
 #endif
-                    start_advertising();
+                    start_advertising(false);
                 }
             }
         }
@@ -922,9 +946,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     ble_notify_enabled = false;
     boot_notify_enabled = false;
     protocol_mode = 0x01;
-    if (!deep_sleep)
+    if (!deep_sleep && !ble_resetting)
     {
-        keyboard_deep_sleep();
+        reconnect_waiting = false;
+        k_work_reschedule(&reconnect_work, K_NO_WAIT);
     }
 }
 
@@ -1032,7 +1057,7 @@ int keyboard_deep_sleep_wakeup(void)
     k_msleep(100);
 #endif
 
-    start_advertising();
+    start_advertising(false);
     deep_sleep = false;
     return 0;
 }
@@ -1908,6 +1933,7 @@ void delayed_init(void)
     k_work_init_delayable(&rgb_power_ext_work, rgb_power_ext_delayer);
 #endif
     k_work_init_delayable(&deep_sleep_work, deep_sleep_delayer);
+    k_work_init_delayable(&reconnect_work, reconnect_handler);
 }
 
 int main(void)
@@ -1989,7 +2015,7 @@ int main(void)
     }
 #endif
 
-    start_advertising();
+    start_advertising(false);
 
     while (1)
     {
