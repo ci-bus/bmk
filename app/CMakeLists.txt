@@ -3,7 +3,12 @@ cmake_minimum_required(VERSION 3.20.0)
 set(NO_BUILD_TYPE_WARNING ON)
 list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(KBD_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/keyboards/${KEYBOARD}/keyboard.h")
+if(KEYBOARD STREQUAL "dongle")
+  set(KBD_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/src/dongle/dongle.h")
+  list(APPEND EXTRA_CONF_FILE "src/dongle/dongle.conf")
+else()
+  set(KBD_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/keyboards/${KEYBOARD}/keyboard.h")
+endif()
 
 if(EXISTS ${KBD_HEADER})
   file(READ ${KBD_HEADER} _kbd_h)
@@ -45,11 +50,17 @@ if(NOT DEFINED KEYBOARD)
 endif()
 
 target_include_directories(app PRIVATE src)
-target_include_directories(app PRIVATE keyboards/${KEYBOARD})
 
-target_sources(app PRIVATE
-  keyboards/${KEYBOARD}/keyboard.c
-  keyboards/${KEYBOARD}/keymap.c
-  src/battery/battery.c
-  src/main.c
-)
+if(KEYBOARD STREQUAL "dongle")
+  target_include_directories(app PRIVATE src/dongle)
+  target_sources(app PRIVATE src/dongle/main.c)
+else()
+  target_include_directories(app PRIVATE keyboards/${KEYBOARD})
+
+  target_sources(app PRIVATE
+    keyboards/${KEYBOARD}/keyboard.c
+    keyboards/${KEYBOARD}/keymap.c
+    src/battery/battery.c
+    src/main.c
+  )
+endif()

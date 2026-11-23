@@ -622,6 +622,17 @@ static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
 };
 
+static const struct bt_data ad_free[] = {
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA_BYTES(
+        BT_DATA_UUID16_ALL,
+        BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_DIS_VAL),
+        BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
+    BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
+    BT_DATA_BYTES(BT_DATA_MANUFACTURER_DATA, BMK_LINK_FREE_MARK),
+};
+
 static const struct bt_data sd[] = {
     BT_DATA(
         BT_DATA_NAME_COMPLETE,
@@ -629,13 +640,26 @@ static const struct bt_data sd[] = {
         sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+static void count_bond(const struct bt_bond_info *info, void *user_data)
+{
+    (*(uint8_t *)user_data)++;
+}
+
+static bool has_bond(void)
+{
+    uint8_t bonds = 0;
+    bt_foreach_bond(param->id, count_bond, &bonds);
+    return bonds > 0;
+}
+
 static void start_advertising(void)
 {
+    bool bonded = has_bond();
     bt_le_adv_stop();
     int err = bt_le_adv_start(
         param,
-        ad,
-        ARRAY_SIZE(ad),
+        bonded ? ad : ad_free,
+        bonded ? ARRAY_SIZE(ad) : ARRAY_SIZE(ad_free),
         sd,
         ARRAY_SIZE(sd));
     if (err && err != -EALREADY)

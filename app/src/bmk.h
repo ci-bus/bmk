@@ -27,6 +27,7 @@
 #include <hal/nrf_gpio.h>
 
 #include "hid.h"
+#include "link.h"
 
 #define ENCODER_PINS 2
 

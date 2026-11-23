@@ -72,6 +72,22 @@ west build -p auto -b nrf52833 -- -DKEYBOARD=miguelio/mk60v2
 
 The firmware output is at `build/zephyr/zephyr.uf2`.
 
+### USB dongle
+
+The dongle firmware runs on the same base hardware as the keyboards (without the key matrix). It connects over BLE to any BMK keyboard that has no bond and replicates its keystrokes over USB:
+
+```bash
+west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle
+```
+
+The firmware output is at `build-dongle/zephyr/zephyr.uf2`. Use a dedicated build directory for the dongle, as above.
+
+- A keyboard without a bond advertises a BMK "free" mark; the dongle connects to the first free keyboard it sees.
+- The link is encrypted but never bonded: neither side stores keys, so the dongle forgets the keyboard when it loses power and the keyboard stays free.
+- A keyboard bonded to a computer is ignored by the dongle. Press `HID_BT_CLEAR` on the keyboard to free it.
+- To use the keyboard directly with a computer again, unplug the dongle and pair as usual.
+- To enable logs over USB serial, set `#define LOGS true` in `app/src/dongle/dongle.h` and build with `-p always`.
+
 ## Flashing
 
 1. Double-tap reset to enter bootloader (USB mass storage appears)

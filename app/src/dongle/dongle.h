@@ -1,0 +1,18 @@
+#ifndef DONGLE_H
+#define DONGLE_H
+
+#define LOGS false
+
+#define CONN_INTERVAL 6
+#define CONN_TIMEOUT 400
+#define SCAN_INTERVAL 0x0060
+
+#define USB_TX_THREAD_STACK_SIZE 2048
+#define USB_TX_THREAD_PRIORITY 7
+#define USB_TX_CACHE_SIZE 16
+#define USB_TX_RETRIES 100
+#define USB_TX_WAIT_MS 20
+
+#define SCAN_GUARD_MS 2000
+
+#endif
