@@ -64,6 +64,12 @@ Inside the container:
 west build -p auto -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1
 ```
 
+or
+
+```bash
+west build -p auto -b nrf52833 -- -DKEYBOARD=miguelio/mk60v2
+```
+
 The firmware output is at `build/zephyr/zephyr.uf2`.
 
 ## Flashing
