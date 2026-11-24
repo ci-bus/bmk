@@ -1049,9 +1049,6 @@ int keyboard_deep_sleep_wakeup(void)
         return err;
     }
 
-    bt_conn_auth_cb_register(&auth_cb);
-    bt_conn_auth_info_cb_register(&auth_info_cb);
-
 #if IS_ENABLED(CONFIG_SETTINGS)
     settings_load();
     k_msleep(100);
