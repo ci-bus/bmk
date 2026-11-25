@@ -6,7 +6,6 @@ build-dongle/
 .west
 /zephyr/
 modules/
-bootloader/
 tools/
 
 # IDE
