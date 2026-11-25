@@ -59,4 +59,4 @@ Each PCB accepts an nRF52840 or an nRF52833 module. Build with `-b nrf52840` or 
 west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle
 ```
 
-The dongle connects over Bluetooth to a keyboard that has no paired host and replicates its keys over USB. See the documentation for details.
+The dongle connects over Bluetooth to a keyboard that has no paired host and replicates its keys over USB. It can be built for either chip: use `-b nrf52833` for a dongle with an nRF52833 module. See the documentation for details.

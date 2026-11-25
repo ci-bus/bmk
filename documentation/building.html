@@ -33,6 +33,7 @@ west build -p auto -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
 <h2>Build the USB dongle</h2>
 <pre><code>west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle</code></pre>
 <p>The result is <code>build-dongle/zephyr/zephyr.uf2</code>. Keep a dedicated build folder for the dongle, as in the command above, so it does not mix with a keyboard build.</p>
+<p>For a dongle with an nRF52833 module, use <code>-b nrf52833</code>.</p>
 
 <h2>When to force a clean build</h2>
 <p>A build folder remembers the configuration files and overlays it was created with. Add <code>-p always</code> whenever you reuse the same folder after one of these changes:</p>

@@ -10,7 +10,7 @@
 <body>
 <main>
 <h1>USB dongle</h1>
-<p class="lead">The dongle is a small nRF52840 board that plugs into the computer, connects to a keyboard running BMK over Bluetooth and presents it as a wired USB keyboard.</p>
+<p class="lead">The dongle is a small nRF52840 or nRF52833 board that plugs into the computer, connects to a keyboard running BMK over Bluetooth and presents it as a wired USB keyboard.</p>
 
 <h2>Why use it</h2>
 <ul>
@@ -20,11 +20,12 @@
 </ul>
 
 <h2>Hardware</h2>
-<p>The dongle uses the same base hardware as a keyboard with an nRF52840, without the key matrix: the module, the USB connector and the UF2 bootloader. It has no buttons and no battery.</p>
+<p>The dongle uses the same base hardware as a keyboard, without the key matrix: the module, the USB connector and the UF2 bootloader. It has no buttons and no battery. Like the keyboards, it works with an nRF52840 or an nRF52833 module.</p>
 
 <h2>Build and flash</h2>
 <pre><code>cd app
 west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle</code></pre>
+<p>For a dongle with an nRF52833 module, replace <code>-b nrf52840</code> with <code>-b nrf52833</code>.</p>
 <p>Flash <code>build-dongle/zephyr/zephyr.uf2</code> as described in <a href="flashing.html">Flashing</a>. The keyboard firmware needs no special build to work with the dongle.</p>
 
 <h2>Connect a keyboard</h2>
