@@ -10,7 +10,7 @@
 <body>
 <main>
 <h1>RGB lighting</h1>
-<p class="lead">BMK drives a chain of WS2812 addressable LEDs from a single pin, with one colour for the whole chain or an animated colour cycle.</p>
+<p class="lead">BMK drives a chain of WS2812 addressable LEDs from a single pin, with a fixed colour or one of several animated effects that you change from the keyboard.</p>
 
 <h2>Enable the LEDs</h2>
 <p>In <code>keyboard.h</code>:</p>
@@ -39,16 +39,38 @@
   <tr><td><code>HID_KEY_RGB_OFF</code></td><td>Turns the LEDs off.</td></tr>
   <tr><td><code>HID_KEY_RGB_LIGHT</code></td><td>Raises the brightness by <code>RGB_LIGHT_JUMP</code>. After the maximum it starts again from the minimum.</td></tr>
   <tr><td><code>HID_KEY_RGB_COLOR</code></td><td>Advances the colour by <code>RGB_COLOR_JUMP</code> around the colour wheel.</td></tr>
+  <tr><td><code>HID_KEY_RGB_SATURATION</code></td><td>Raises the saturation by <code>RGB_SATURATION_JUMP</code>. After the maximum it starts again from the minimum.</td></tr>
+  <tr><td><code>HID_KEY_RGB_EFFECT</code></td><td>Changes to the next effect. After the last one it goes back to the first.</td></tr>
 </table>
-<p>Brightness and colour go from 0 to 255. The lighting state is not saved: after a restart the LEDs go back to full brightness and to the state given by <code>RGB_ON_STARTUP</code>.</p>
+<p>Brightness, colour and saturation go from 0 to 255. With the default steps, brightness and saturation never reach 0: use <code>HID_KEY_RGB_OFF</code> to switch the LEDs off.</p>
+<p>The lighting state is not saved. After a restart the LEDs go back to full brightness and saturation, to the effect given by <code>RGB_EFFECT_ON_STARTUP</code> and to the on or off state given by <code>RGB_ON_STARTUP</code>.</p>
 
-<h2>Animation</h2>
-<p>With <code>RGB_EFFECTS</code> enabled, which is the default when <code>RGB</code> is on, all the LEDs cycle together through the colour wheel. The colour advances one step every 60 ms and the brightness set with <code>HID_KEY_RGB_LIGHT</code> still applies.</p>
-<p>For a fixed colour that you choose with <code>HID_KEY_RGB_COLOR</code>, switch the animation off:</p>
-<pre><code>#define RGB_EFFECTS false</code></pre>
-<div class="note">
-  <p>The source also contains a rainbow and a scanner effect. They are not selectable yet; the colour cycle is the only animation in use.</p>
-</div>
+<h2 id="effects">Effects</h2>
+<p>Each effect has a number. <code>HID_KEY_RGB_EFFECT</code> goes through them in this order:</p>
+<table>
+  <tr><th>Number</th><th>Effect</th><th>What it does</th><th>Keys that affect it</th></tr>
+  <tr><td>0</td><td>Static</td><td>All the LEDs show one fixed colour.</td><td>Colour, saturation, brightness</td></tr>
+  <tr><td>1</td><td>Colour cycle</td><td>All the LEDs change together through the colour wheel.</td><td>Saturation, brightness</td></tr>
+  <tr><td>2</td><td>Rainbow</td><td>The colour wheel is spread along the chain and moves through it.</td><td>Saturation, brightness</td></tr>
+  <tr><td>3</td><td>Scanner</td><td>A bright point travels from one end of the chain to the other and back; the LEDs around it are progressively dimmer.</td><td>Colour, saturation, brightness</td></tr>
+</table>
+<p>Animated effects advance one step every 60 ms.</p>
+
+<h3>Choose the effect at start-up</h3>
+<p>Put the number of the effect in <code>keyboard.h</code>. Without this line the keyboard starts with the colour cycle:</p>
+<pre><code>#define RGB_EFFECT_ON_STARTUP 2</code></pre>
+<p>The example starts with the rainbow. Use <code>0</code> for a keyboard that starts with a fixed colour.</p>
+
+<h3>Leave effects out</h3>
+<p>Each animated effect can be removed from the firmware, and then <code>HID_KEY_RGB_EFFECT</code> skips it:</p>
+<pre><code>#define RGB_EFF_KITT false</code></pre>
+<table>
+  <tr><th>Define</th><th>Effect</th></tr>
+  <tr><td><code>RGB_EFF_COLORS</code></td><td>1, colour cycle</td></tr>
+  <tr><td><code>RGB_EFF_RAINBOW</code></td><td>2, rainbow</td></tr>
+  <tr><td><code>RGB_EFF_KITT</code></td><td>3, scanner</td></tr>
+</table>
+<p>To remove all the animations at once and keep only the fixed colour, set <code>RGB_EFFECTS</code> to <code>false</code>. In that case <code>HID_KEY_RGB_EFFECT</code> does nothing.</p>
 
 <h2>Lighting and power</h2>
 <ul>
@@ -63,9 +85,12 @@
   <tr><td><code>RGB</code></td><td><code>false</code></td><td>Enables the lighting.</td></tr>
   <tr><td><code>RGB_PORT</code>, <code>RGB_PIN</code>, <code>RGB_LEDS</code></td><td>none</td><td>Data pin and length of the chain. Required with <code>RGB</code>.</td></tr>
   <tr><td><code>RGB_ON_STARTUP</code></td><td><code>true</code></td><td>Whether the LEDs are on when the keyboard starts.</td></tr>
-  <tr><td><code>RGB_EFFECTS</code></td><td>same as <code>RGB</code></td><td>Enables the colour cycle animation.</td></tr>
+  <tr><td><code>RGB_EFFECTS</code></td><td>same as <code>RGB</code></td><td>Enables the animated effects.</td></tr>
+  <tr><td><code>RGB_EFFECT_ON_STARTUP</code></td><td>1</td><td>Number of the effect active when the keyboard starts.</td></tr>
+  <tr><td><code>RGB_EFF_COLORS</code>, <code>RGB_EFF_RAINBOW</code>, <code>RGB_EFF_KITT</code></td><td>same as <code>RGB_EFFECTS</code></td><td>Include each animated effect.</td></tr>
   <tr><td><code>RGB_LIGHT_JUMP</code></td><td>32</td><td>Brightness step of <code>HID_KEY_RGB_LIGHT</code>.</td></tr>
   <tr><td><code>RGB_COLOR_JUMP</code></td><td>5</td><td>Colour step of <code>HID_KEY_RGB_COLOR</code>.</td></tr>
+  <tr><td><code>RGB_SATURATION_JUMP</code></td><td>32</td><td>Saturation step of <code>HID_KEY_RGB_SATURATION</code>.</td></tr>
 </table>
 </main>
 </body>

@@ -24,6 +24,9 @@
 <h3>"RGB enabled … but RGB_PORT/RGB_PIN/RGB_LEDS not defined"</h3>
 <p><code>keyboard.h</code> has <code>#define RGB true</code> without the three numeric defines that describe the LED chain. See <a href="rgb.html">RGB lighting</a>.</p>
 
+<h3>"Unknown RGB_EFFECT_ON_STARTUP"</h3>
+<p>The number given in <code>RGB_EFFECT_ON_STARTUP</code> is not one of the effects. Valid values are 0 to 3. See <a href="rgb.html#effects">RGB lighting</a>.</p>
+
 <h3>Errors about <code>rgb_on</code> or <code>spi_dev</code></h3>
 <p>The keyboard enables <code>POWER_EXT</code> without <code>RGB</code>. The external power pin can only be used together with the RGB lighting.</p>
 
