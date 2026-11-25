@@ -32,6 +32,8 @@ static bool rgb_on = RGB_ON_STARTUP;
 static bool rgb_spi_suspended = false;
 #if RGB_EFFECTS
 static uint8_t rgb_beat = 0;
+static uint8_t rgb_effect = RGB_EFFECT_ON_STARTUP;
+BUILD_ASSERT(RGB_EFFECT_ON_STARTUP < RGB_EFFECT_COUNT, "Unknown RGB_EFFECT_ON_STARTUP");
 #endif
 #endif
 
@@ -299,8 +301,55 @@ void rgb_eff_kitt(void)
 void rgb_effects_update(void)
 {
     rgb_beat++;
-    rgb_eff_colors();
+    switch (rgb_effect)
+    {
+#if RGB_EFF_COLORS
+    case RGB_EFFECT_COLORS:
+        rgb_eff_colors();
+        break;
+#endif
+#if RGB_EFF_RAINBOW
+    case RGB_EFFECT_RAINBOW:
+        rgb_eff_rainbow();
+        break;
+#endif
+#if RGB_EFF_KITT
+    case RGB_EFFECT_KITT:
+        rgb_eff_kitt();
+        break;
+#endif
+    default:
+        return;
+    }
     led_strip_update_rgb(strip, pixels, NUM_LEDS);
+}
+static bool rgb_effect_enabled(uint8_t effect)
+{
+    switch (effect)
+    {
+    case RGB_EFFECT_STATIC:
+        return true;
+    case RGB_EFFECT_COLORS:
+        return RGB_EFF_COLORS;
+    case RGB_EFFECT_RAINBOW:
+        return RGB_EFF_RAINBOW;
+    case RGB_EFFECT_KITT:
+        return RGB_EFF_KITT;
+    default:
+        return false;
+    }
+}
+static void rgb_effect_next(void)
+{
+    do
+    {
+        rgb_effect = (rgb_effect + 1) % RGB_EFFECT_COUNT;
+    } while (!rgb_effect_enabled(rgb_effect));
+    rgb_beat = 0;
+    if (rgb_effect == RGB_EFFECT_STATIC)
+    {
+        rgb_leds_update();
+    }
 }
 static void rgb_work_handler(struct k_work *work)
 {
@@ -1330,9 +1379,14 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
             rgb_leds_update();
             break;
         case HID_KEY_RGB_SATURATION:
-            rgb_color = rgb_saturation + HID_KEY_RGB_SATURATION;
+            rgb_saturation = rgb_saturation + RGB_SATURATION_JUMP;
             rgb_leds_update();
             break;
+#if RGB_EFFECTS
+        case HID_KEY_RGB_EFFECT:
+            rgb_effect_next();
+            break;
+#endif
         case HID_KEY_RGB_ON:
             rgb_spi_on();
             rgb_on = true;

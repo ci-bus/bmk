@@ -12,6 +12,7 @@
 #define RGB_PORT 1
 #define RGB_PIN 6
 #define RGB_LEDS 6
+#define RGB_EFFECT_ON_STARTUP 2
 #define BATTERY true
 
 extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
