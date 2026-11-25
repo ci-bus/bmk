@@ -1,5 +1,11 @@
 #include "keyboard.h"
 
+#if defined(CONFIG_SOC_NRF52833_QIAA)
+#define ENCODER_0 P1(5)
+#else
+#define ENCODER_0 P1(13)
+#endif
+
 const uint16_t pin_cols[MATRIX_COLS] = {
     P1(2),
     P1(0),
@@ -28,7 +34,7 @@ const uint16_t pin_rows[MATRIX_ROWS] = {
 };
 
 const uint16_t pin_encoders[ENCODERS * ENCODER_PINS] = {
-    P1(13),
+    ENCODER_0,
     P0(2),
 };
 
