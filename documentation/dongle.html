@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USB dongle · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>USB dongle</h1>
+<p class="lead">The dongle is a small nRF52840 board that plugs into the computer, connects to a keyboard running BMK over Bluetooth and presents it as a wired USB keyboard.</p>
+
+<h2>Why use it</h2>
+<ul>
+  <li>The computer sees a plain USB keyboard: it works in the BIOS, on machines without Bluetooth and before the operating system starts.</li>
+  <li>The link is tuned for low latency, since the dongle is powered by the port and does not have to save energy.</li>
+  <li>It works with every keyboard running BMK. The dongle does not need to know the matrix or the keymap.</li>
+</ul>
+
+<h2>Hardware</h2>
+<p>The dongle uses the same base hardware as a keyboard with an nRF52840, without the key matrix: the module, the USB connector and the UF2 bootloader. It has no buttons and no battery.</p>
+
+<h2>Build and flash</h2>
+<pre><code>cd app
+west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle</code></pre>
+<p>Flash <code>build-dongle/zephyr/zephyr.uf2</code> as described in <a href="flashing.html">Flashing</a>. The keyboard firmware needs no special build to work with the dongle.</p>
+
+<h2>Connect a keyboard</h2>
+<ol>
+  <li>Make sure the keyboard has no paired host. If it was paired with a computer, press the key mapped to <code>HID_BT_CLEAR</code>.</li>
+  <li>Plug the dongle into the computer.</li>
+  <li>Press a key on the keyboard to wake it up.</li>
+</ol>
+<p>The dongle connects on its own within a few seconds and the keyboard starts typing through USB.</p>
+
+<h2>How the link works</h2>
+<ul>
+  <li><strong>Free keyboards only.</strong> A keyboard without a paired host adds a BMK "free" mark to its advertising. The dongle scans continuously and connects to the first keyboard that shows that mark. Keyboards paired with a computer are ignored.</li>
+  <li><strong>Encrypted, never stored.</strong> The link is encrypted, but neither side saves the keys. The dongle forgets the keyboard as soon as it loses power, and the keyboard stays free.</li>
+  <li><strong>Automatic reconnection.</strong> If the dongle is unplugged or the computer is switched off, the keyboard keeps advertising slowly for five minutes and then turns Bluetooth off. Plug the dongle back in and, if needed, press a key: the link comes back by itself.</li>
+  <li><strong>No stuck keys.</strong> When the link is lost, the dongle releases every key on the computer.</li>
+  <li><strong>Wake from sleep.</strong> A key press wakes a suspended computer, if its USB port allows it.</li>
+</ul>
+
+<h2>Going back to Bluetooth</h2>
+<p>Unplug the dongle and pair the keyboard with the computer in the usual way. Once it is paired, the keyboard stops showing the free mark and the dongle ignores it.</p>
+<p>To return to the dongle, press <code>HID_BT_CLEAR</code> on the keyboard.</p>
+
+<h2>Limits</h2>
+<ul>
+  <li>One dongle serves one keyboard at a time.</li>
+  <li>The dongle cannot choose between several free keyboards in range. It connects to the first one it hears.</li>
+</ul>
+
+<h2>Link parameters</h2>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Bluetooth connection interval</td><td>7.5 ms</td></tr>
+  <tr><td>Supervision timeout</td><td>4 s</td></tr>
+  <tr><td>USB polling interval</td><td>1 ms</td></tr>
+  <tr><td>USB product name</td><td>BMK Dongle</td></tr>
+</table>
+<p>The Bluetooth values are defined in <code>app/src/dongle/dongle.h</code>; the USB values in <code>app/src/dongle/dongle.conf</code>.</p>
+
+<h2>Logs</h2>
+<p>Set <code>#define LOGS true</code> in <code>app/src/dongle/dongle.h</code> and rebuild with <code>-p always</code>. The dongle then also appears as a USB serial port that prints its activity. See <a href="logging.html">Logs</a>.</p>
+</main>
+</body>
+</html>

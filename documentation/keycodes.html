@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keycodes · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+<script src="assets/keycodes.js"></script>
+</head>
+<body>
+<main class="wide">
+<h1>Keycodes</h1>
+<p class="lead">Every value you can put in a <a href="keymap.html">keymap</a>. Click a key or a constant to copy its name.</p>
+<p>Jump to: <a href="#standard-keys">standard keys</a> · <a href="#modifiers">modifiers</a> · <a href="#media-keys">media keys</a> · <a href="#layer-keys">layer keys</a> · <a href="#tap-hold-keys">tap-hold keys</a> · <a href="#firmware-actions">firmware actions</a></p>
+
+<h2 id="standard-keys">Standard keys</h2>
+<div class="key-info" id="key-info">
+  <span class="hint">Click a key on the keyboard below.</span>
+</div>
+<div class="kbd-scroll">
+  <div class="keyboard" id="keyboard"></div>
+</div>
+<p>Keys drawn with a dashed border have no named constant. Write their HID usage value directly in the keymap, for example <code>0x65</code> for the Menu key. Any other value from the HID keyboard usage table works the same way.</p>
+
+<h3>Keys of other layouts</h3>
+<table>
+  <tr><th>Constant</th><th>HID usage</th><th>Key</th></tr>
+  <tr><td><code class="copyable">HID_KEY_NUBS</code></td><td>0x64</td><td>ISO key between left Shift and Z (<code>\ |</code> or <code>&lt; &gt;</code>)</td></tr>
+  <tr><td><code class="copyable">HID_KEY_HASH</code></td><td>0x32</td><td>ISO key next to Enter (<code># ~</code>)</td></tr>
+</table>
+
+<h2 id="modifiers">Modifiers</h2>
+<table>
+  <tr><th>Constant</th><th>HID usage</th><th>Key</th></tr>
+  <tr><td><code class="copyable">HID_KEY_LCTRL</code></td><td>0xE0</td><td>Left Control</td></tr>
+  <tr><td><code class="copyable">HID_KEY_LSHIFT</code></td><td>0xE1</td><td>Left Shift</td></tr>
+  <tr><td><code class="copyable">HID_KEY_LALT</code></td><td>0xE2</td><td>Left Alt</td></tr>
+  <tr><td><code class="copyable">HID_KEY_LGUI</code></td><td>0xE3</td><td>Left GUI (Windows, Command)</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RCTRL</code></td><td>0xE4</td><td>Right Control</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RSHIFT</code></td><td>0xE5</td><td>Right Shift</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RALT</code></td><td>0xE6</td><td>Right Alt (AltGr)</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RGUI</code></td><td>0xE7</td><td>Right GUI</td></tr>
+</table>
+
+<h2 id="media-keys">Media keys</h2>
+<table>
+  <tr><th>Constant</th><th>Action</th></tr>
+  <tr><td><code class="copyable">HID_KEY_VOLUME_UP</code></td><td>Volume up</td></tr>
+  <tr><td><code class="copyable">HID_KEY_VOLUME_DOWN</code></td><td>Volume down</td></tr>
+  <tr><td><code class="copyable">HID_KEY_MUTE</code></td><td>Mute</td></tr>
+  <tr><td><code class="copyable">HID_KEY_PLAY_PAUSE</code></td><td>Play or pause</td></tr>
+  <tr><td><code class="copyable">HID_KEY_NEXT_TRACK</code></td><td>Next track</td></tr>
+  <tr><td><code class="copyable">HID_KEY_PREV_TRACK</code></td><td>Previous track</td></tr>
+  <tr><td><code class="copyable">HID_KEY_STOP</code></td><td>Stop</td></tr>
+  <tr><td><code class="copyable">HID_KEY_EJECT</code></td><td>Eject</td></tr>
+  <tr><td><code class="copyable">HID_KEY_SLEEP</code></td><td>Put the computer to sleep</td></tr>
+</table>
+<p>Other controls of the HID consumer page can be sent with <code>(K_CONSUMER | usage)</code>, for usages up to <code>0xFF</code>.</p>
+
+<h2 id="layer-keys">Layer keys</h2>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code class="copyable">FN_MO(1)</code></td><td>Layer active while the key is held.</td></tr>
+  <tr><td><code class="copyable">FN_TO(1)</code></td><td>Switch to the layer when the key is released.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_TRANS</code></td><td>Use the keycode of the layer below.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_NONE</code></td><td>No action.</td></tr>
+</table>
+<p>Replace <code>1</code> with the layer number. Details in <a href="keymap.html#layers">Keymaps and layers</a>.</p>
+
+<h2 id="tap-hold-keys">Tap-hold keys</h2>
+<table>
+  <tr><th>Keycode</th><th>When held</th></tr>
+  <tr><td><code class="copyable">TH_LCTRL(key)</code></td><td>Left Control</td></tr>
+  <tr><td><code class="copyable">TH_LSHIFT(key)</code></td><td>Left Shift</td></tr>
+  <tr><td><code class="copyable">TH_LALT(key)</code></td><td>Left Alt</td></tr>
+  <tr><td><code class="copyable">TH_LGUI(key)</code></td><td>Left GUI</td></tr>
+  <tr><td><code class="copyable">TH_RCTRL(key)</code></td><td>Right Control</td></tr>
+  <tr><td><code class="copyable">TH_RSHIFT(key)</code></td><td>Right Shift</td></tr>
+  <tr><td><code class="copyable">TH_RALT(key)</code></td><td>Right Alt</td></tr>
+  <tr><td><code class="copyable">TH_RGUI(key)</code></td><td>Right GUI</td></tr>
+</table>
+<p><code>key</code> is the standard key sent on a tap, for example <code>TH_RSHIFT(HID_KEY_UP)</code>. Details in <a href="tap-hold.html">Tap-hold</a>.</p>
+
+<h2 id="firmware-actions">Firmware actions</h2>
+<p>These keycodes are handled by the keyboard itself and send nothing to the host.</p>
+<h3>System</h3>
+<table>
+  <tr><th>Keycode</th><th>Action</th><th>More</th></tr>
+  <tr><td><code class="copyable">HID_BT_CLEAR</code></td><td>Forgets the paired host, takes a new Bluetooth address and restarts.</td><td><a href="bluetooth.html">Bluetooth</a></td></tr>
+  <tr><td><code class="copyable">HID_DEEP_SLEEP</code></td><td>Turns Bluetooth off until the next key press. Acts when the key is released.</td><td><a href="power.html">Sleep and power</a></td></tr>
+  <tr><td><code class="copyable">HID_GAMING_ON</code></td><td>Enables gaming mode.</td><td><a href="gaming.html">Gaming mode</a></td></tr>
+  <tr><td><code class="copyable">HID_GAMING_OFF</code></td><td>Disables gaming mode.</td><td><a href="gaming.html">Gaming mode</a></td></tr>
+  <tr><td><code class="copyable">HID_RESET</code></td><td>Restarts the firmware.</td><td><a href="flashing.html">Flashing</a></td></tr>
+  <tr><td><code class="copyable">HID_BOOT</code></td><td>Restarts into the UF2 bootloader.</td><td><a href="flashing.html">Flashing</a></td></tr>
+</table>
+<h3>RGB lighting</h3>
+<p>Available when the keyboard is built with <code>RGB</code>. See <a href="rgb.html">RGB lighting</a>.</p>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code class="copyable">HID_KEY_RGB_TOGGLE</code></td><td>Turns the LEDs on or off.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RGB_ON</code></td><td>Turns the LEDs on.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RGB_OFF</code></td><td>Turns the LEDs off.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RGB_LIGHT</code></td><td>Steps the brightness.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_RGB_COLOR</code></td><td>Steps the colour.</td></tr>
+</table>
+<h3>External power</h3>
+<p>Available when the keyboard is built with <code>POWER_EXT</code>. See <a href="power.html#external-power">Sleep and power</a>.</p>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code class="copyable">HID_KEY_POWER_ON</code></td><td>Switches the external power pin on.</td></tr>
+  <tr><td><code class="copyable">HID_KEY_POWER_OFF</code></td><td>Switches the external power pin off.</td></tr>
+</table>
+</main>
+</body>
+</html>

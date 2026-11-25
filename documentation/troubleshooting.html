@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Troubleshooting · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Troubleshooting</h1>
+<p class="lead">Common problems and how to solve them. When in doubt, build with <a href="logging.html">logs</a> to see what the firmware is doing.</p>
+
+<h2>Building</h2>
+<h3>The build fails after it worked before</h3>
+<p>The build folder was created for another keyboard, another board, or with a different value of <code>RGB</code> or <code>LOGS</code>. Rebuild from scratch:</p>
+<pre><code>west build -p always -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
+<p>One example is an error that mentions <code>ws2812</code> when the folder was last used for a keyboard with RGB. See <a href="building.html">Building</a>.</p>
+
+<h3>"KEYBOARD not defined"</h3>
+<p>The <code>-DKEYBOARD=…</code> argument is missing. It goes at the end of the command, after the <code>--</code> separator.</p>
+
+<h3>"RGB enabled … but RGB_PORT/RGB_PIN/RGB_LEDS not defined"</h3>
+<p><code>keyboard.h</code> has <code>#define RGB true</code> without the three numeric defines that describe the LED chain. See <a href="rgb.html">RGB lighting</a>.</p>
+
+<h3>Errors about <code>rgb_on</code> or <code>spi_dev</code></h3>
+<p>The keyboard enables <code>POWER_EXT</code> without <code>RGB</code>. The external power pin can only be used together with the RGB lighting.</p>
+
+<h3>Kconfig warnings in the dongle build</h3>
+<p>Warnings about <code>BT_PERIPHERAL_PREF_*</code> symbols are expected and harmless.</p>
+
+<h2>Flashing</h2>
+<h3>The bootloader drive does not appear</h3>
+<ul>
+  <li>Double-tap the reset button quickly; a single press only restarts the firmware.</li>
+  <li>Use a USB cable that carries data. Many cables only charge.</li>
+</ul>
+
+<h2>Bluetooth</h2>
+<h3>The keyboard is not in the Bluetooth list</h3>
+<ul>
+  <li>Press a key. After a long time unused, Bluetooth is off until the keyboard is woken up.</li>
+  <li>If it is paired with another host that is nearby, that host reconnects first and the keyboard stops being visible, because it accepts one connection at a time. Press <code>HID_BT_CLEAR</code> to forget that host.</li>
+</ul>
+
+<h3>The host shows the keyboard but cannot connect</h3>
+<p>This happens after a <code>HID_BT_CLEAR</code>, because the host still remembers the old pairing. Remove <strong>BMK Keyboard</strong> from the Bluetooth list of the host and pair again.</p>
+
+<h3>The keyboard takes a few seconds to reconnect</h3>
+<p>After a disconnection the keyboard advertises slowly to save battery, so the host needs a little longer to find it. This is the expected behaviour. See <a href="bluetooth.html">Bluetooth</a>.</p>
+
+<h3>Nothing is typed over Bluetooth while the cable is plugged in</h3>
+<p>With USB connected, keys are sent over USB only. Unplug the cable to type over Bluetooth.</p>
+
+<h2>USB dongle</h2>
+<h3>The dongle does not connect to the keyboard</h3>
+<ul>
+  <li>The keyboard is paired with a computer. Press <code>HID_BT_CLEAR</code> on the keyboard so it becomes free.</li>
+  <li>The keyboard has turned Bluetooth off. Press a key to wake it up.</li>
+  <li>Another free keyboard running BMK is nearby and the dongle connected to that one.</li>
+</ul>
+
+<h3>The keyboard stopped working with the dongle after pairing it with a computer</h3>
+<p>A paired keyboard no longer shows the free mark, so the dongle ignores it. Press <code>HID_BT_CLEAR</code> to go back to the dongle.</p>
+
+<h2>Keys</h2>
+<h3>A key sends the wrong character</h3>
+<p>The entry is at the wrong position in the keymap. Positions follow the electrical matrix: <code>row * MATRIX_COLS + column</code>. See <a href="keymap.html">Keymaps and layers</a>.</p>
+
+<h3>A whole row or column does nothing</h3>
+<p>Check its pin in <code>keyboard.c</code> against the schematic, including the port: <code>P0(n)</code> and <code>P1(n)</code> are different pins.</p>
+
+<h3>No key works at all</h3>
+<p>The diodes may face the other way. Declare the rows of the PCB as columns and the columns as rows. See <a href="new-keyboard.html">Adding a keyboard</a>.</p>
+
+<h3>Double characters</h3>
+<p>Raise <code>DEBOUNCE_PRESS</code> and <code>DEBOUNCE_RELEASE</code> in <code>keyboard.h</code>.</p>
+
+<h3>The keyboard stays on a layer</h3>
+<p>The position of the <code>FN_MO</code> key must be <code>HID_KEY_TRANS</code> on the layer it activates. With <code>HID_KEY_NONE</code> there, the release of the key is not seen.</p>
+
+<h3>A tap-hold key acts as a modifier when tapped</h3>
+<p>Raise <code>TAP_HOLD_PRESS_DELAY</code>. See <a href="tap-hold.html">Tap-hold</a>.</p>
+
+<h3>The encoder works backwards</h3>
+<p>Swap its two keycodes in the keymap or its two pins in <code>keyboard.c</code>.</p>
+
+<h2>Lighting</h2>
+<h3>The LEDs do not light up</h3>
+<ul>
+  <li>Check <code>RGB_PORT</code>, <code>RGB_PIN</code> and <code>RGB_LEDS</code>.</li>
+  <li>If the LEDs are fed through a switch or regulator, enable <code>POWER_EXT</code> and set <code>pin_power_ext</code>.</li>
+  <li>Rebuild with <code>-p always</code> after changing any of them.</li>
+</ul>
+
+<h3>The LEDs stay on when the keyboard sleeps</h3>
+<p>The firmware switches them off through the external power pin. A PCB without it keeps the LEDs lit. See <a href="rgb.html">RGB lighting</a>.</p>
+</main>
+</body>
+</html>

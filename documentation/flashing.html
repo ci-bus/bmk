@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flashing · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Flashing</h1>
+<p class="lead">BMK boards use the Adafruit nRF52 UF2 bootloader: the keyboard shows up as a USB drive and you copy the firmware file onto it.</p>
+
+<h2>Flash with UF2</h2>
+<h3>1. Enter the bootloader</h3>
+<p>Connect the keyboard with a USB cable and use one of these methods:</p>
+<ul>
+  <li>Double-tap the reset button of the board.</li>
+  <li>Press the key mapped to <code>HID_BOOT</code> in your keymap. The firmware restarts straight into the bootloader, so you do not need to reach the reset button.</li>
+</ul>
+<p>A USB mass storage drive appears on the computer.</p>
+
+<h3>2. Copy the firmware</h3>
+<p>Drag <code>app/build/zephyr/zephyr.uf2</code> onto the drive. When the copy finishes, the drive disappears and the keyboard restarts with the new firmware.</p>
+
+<div class="note">
+  <p>The USB dongle is flashed in exactly the same way, with <code>app/build-dongle/zephyr/zephyr.uf2</code>.</p>
+</div>
+
+<h2>Flash with west</h2>
+<p>The board definitions register two flash runners:</p>
+<table>
+  <tr><th>Command</th><th>Needs</th></tr>
+  <tr><td><code>west flash</code></td><td>A J-Link debug probe and <code>nrfjprog</code>.</td></tr>
+  <tr><td><code>west flash -r uf2</code></td><td>The bootloader drive mounted on the machine where west runs.</td></tr>
+</table>
+
+<h2>Keys that help while flashing</h2>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code>HID_BOOT</code></td><td>Restarts into the UF2 bootloader.</td></tr>
+  <tr><td><code>HID_RESET</code></td><td>Restarts the firmware.</td></tr>
+</table>
+<p>Both are usually placed on a secondary layer so they cannot be pressed by accident. See <a href="keymap.html">Keymaps and layers</a>.</p>
+</main>
+</body>
+</html>

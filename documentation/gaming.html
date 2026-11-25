@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gaming mode · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Gaming mode</h1>
+<p class="lead">Gaming mode scans the matrix much more often, trading battery life for a lower delay between pressing a key and sending it.</p>
+
+<h2>Switching it on and off</h2>
+<p>Put these two keycodes somewhere in your keymap, usually on a secondary layer:</p>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code>HID_GAMING_ON</code></td><td>Enables gaming mode.</td></tr>
+  <tr><td><code>HID_GAMING_OFF</code></td><td>Disables gaming mode.</td></tr>
+</table>
+<p>Gaming mode is always off when the keyboard starts. Switching it releases every key that was held.</p>
+
+<h2>What changes</h2>
+<table>
+  <tr><th></th><th>Normal</th><th>Gaming mode</th></tr>
+  <tr><td>Pause between matrix scans</td><td><code>CYCLE_DELAY</code> (1000 µs by default)</td><td><code>GAMING_CYCLE_DELAY</code> (100 µs by default)</td></tr>
+</table>
+<p>The debounce and tap-hold times are recalculated for the new scan rate, so they keep the same duration in milliseconds.</p>
+
+<div class="warn">
+  <p>With the default values the pause between scans is ten times shorter, so the processor rests less and the battery drains faster. Switch gaming mode off when you finish playing.</p>
+</div>
+
+<h2>Options</h2>
+<p>Set them in <code>keyboard.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>CYCLE_DELAY</code></td><td>1000</td><td>Pause in µs between two matrix scans in normal mode.</td></tr>
+  <tr><td><code>GAMING_CYCLE_DELAY</code></td><td>100</td><td>Pause in µs between two matrix scans in gaming mode.</td></tr>
+</table>
+</main>
+</body>
+</html>

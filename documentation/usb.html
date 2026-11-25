@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USB · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>USB</h1>
+<p class="lead">With the cable plugged in, the keyboard is a standard USB HID keyboard. No driver is needed on any operating system.</p>
+
+<h2>Transport priority</h2>
+<p>The keyboard detects the USB cable through the supply voltage of the port and chooses the transport by itself:</p>
+<table>
+  <tr><th>Condition</th><th>Keys are sent over</th></tr>
+  <tr><td>USB cable connected</td><td>USB</td></tr>
+  <tr><td>Battery only</td><td>Bluetooth</td></tr>
+</table>
+<p>The cable is checked when the keyboard starts, once per second while it is awake, and every time it goes to sleep or wakes up. Plugging or unplugging the cable switches the transport without restarting.</p>
+
+<div class="note">
+  <p>While USB is connected the keyboard never goes to sleep, since it is powered by the port.</p>
+</div>
+
+<h2>What the host sees</h2>
+<table>
+  <tr><th>Property</th><th>Value</th><th>Kconfig symbol</th></tr>
+  <tr><td>Product name</td><td>BMK Keyboard</td><td><code>CONFIG_USB_DEVICE_PRODUCT</code></td></tr>
+  <tr><td>Vendor ID</td><td>0x1D50</td><td><code>CONFIG_USB_DEVICE_VID</code></td></tr>
+  <tr><td>Product ID</td><td>0x615E</td><td><code>CONFIG_USB_DEVICE_PID</code></td></tr>
+  <tr><td>Polling interval</td><td>9 ms</td><td><code>CONFIG_USB_HID_POLL_INTERVAL_MS</code></td></tr>
+</table>
+<p>The first three are set in <code>app/prj.conf</code>. The polling interval is the Zephyr default; add the symbol to <code>app/prj.conf</code> to change it.</p>
+
+<h2>Reports</h2>
+<ul>
+  <li>The keyboard report carries the eight modifiers and up to six keys held at the same time.</li>
+  <li>A second report carries media keys, also up to six at a time.</li>
+</ul>
+<p>The same reports are used over Bluetooth, so the keyboard behaves identically on both transports.</p>
+
+<h2>Options</h2>
+<p>Set them in <code>keyboard.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>USB</code></td><td><code>true</code></td><td>Includes the USB keyboard transport. With <code>false</code>, keys are only sent over Bluetooth.</td></tr>
+  <tr><td><code>USB_CHECK_TIMEOUT</code></td><td>1000</td><td>Time in ms between checks of the USB cable while the keyboard is awake.</td></tr>
+</table>
+
+<h2>USB serial for logs</h2>
+<p>When the firmware is built with <code>LOGS</code>, the keyboard also appears as a USB serial port that prints log messages. See <a href="logging.html">Logs</a>.</p>
+</main>
+</body>
+</html>

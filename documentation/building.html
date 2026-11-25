@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Building</h1>
+<p class="lead">One command builds the firmware. You choose the board with <code>-b</code> and the keyboard with <code>-DKEYBOARD</code>.</p>
+
+<h2>Build a keyboard</h2>
+<p>Run the build from the <code>app</code> folder, inside the container:</p>
+<pre><code>cd app
+west build -p auto -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
+<p>or, for a keyboard with an nRF52833:</p>
+<pre><code>west build -p auto -b nrf52833 -- -DKEYBOARD=miguelio/mk60v2</code></pre>
+<p>The result is <code>build/zephyr/zephyr.uf2</code>, ready to be <a href="flashing.html">flashed</a>.</p>
+
+<h3>What each part means</h3>
+<table>
+  <tr><th>Part</th><th>Meaning</th></tr>
+  <tr><td><code>-b nrf52840</code></td><td>The board: <code>nrf52840</code> or <code>nrf52833</code>. It must match the chip on your PCB.</td></tr>
+  <tr><td><code>-DKEYBOARD=miguelio/mk60v1</code></td><td>The keyboard folder inside <code>app/keyboards</code>, or <code>dongle</code> for the <a href="dongle.html">USB dongle</a>.</td></tr>
+  <tr><td><code>-p auto</code></td><td>Lets west decide whether the build folder must be cleaned first. Use <code>-p always</code> to force it.</td></tr>
+  <tr><td><code>-d &lt;folder&gt;</code></td><td>Optional. Builds into another folder instead of <code>build</code>.</td></tr>
+</table>
+
+<h2>Build the USB dongle</h2>
+<pre><code>west build -p auto -b nrf52840 -d build-dongle -- -DKEYBOARD=dongle</code></pre>
+<p>The result is <code>build-dongle/zephyr/zephyr.uf2</code>. Keep a dedicated build folder for the dongle, as in the command above, so it does not mix with a keyboard build.</p>
+
+<h2>When to force a clean build</h2>
+<p>A build folder remembers the configuration files and overlays it was created with. Add <code>-p always</code> whenever you reuse the same folder after one of these changes:</p>
+<ul>
+  <li>You build a different keyboard or switch between a keyboard and the dongle.</li>
+  <li>You build for a different board.</li>
+  <li>You change <code>RGB</code> or <code>LOGS</code> in <code>keyboard.h</code> (or <code>LOGS</code> in <code>dongle.h</code>).</li>
+</ul>
+<pre><code>west build -p always -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
+<p>Changes to the keymap or to any other option only need a normal build.</p>
+
+<div class="note">
+  <p>If you work on several targets, give each one its own folder with <code>-d</code>. Every folder keeps its own configuration and rebuilds are faster.</p>
+</div>
+
+<h2>What the build reads from keyboard.h</h2>
+<p>Most options in <code>keyboard.h</code> are plain C defines used by the source code. Two of them also change how the project is configured, and the build system reads them directly from the file:</p>
+<table>
+  <tr><th>Define</th><th>Effect on the build</th></tr>
+  <tr><td><code>#define RGB true</code></td><td>Adds the LED strip driver and its devicetree overlay, using <code>RGB_PORT</code>, <code>RGB_PIN</code> and <code>RGB_LEDS</code>. The build stops with an error if any of the three is missing.</td></tr>
+  <tr><td><code>#define LOGS true</code></td><td>Adds the USB serial console used for <a href="logging.html">logs</a>.</td></tr>
+</table>
+<p>Write these lines exactly in this form, with a literal <code>true</code> and numeric values, because they are matched as text.</p>
+
+<h2>Warnings you can ignore</h2>
+<p>The dongle build prints Kconfig warnings saying that some <code>BT_PERIPHERAL_PREF_*</code> symbols were assigned a value but got a different one. They come from keyboard settings that do not apply to the dongle and are harmless.</p>
+</main>
+</body>
+</html>

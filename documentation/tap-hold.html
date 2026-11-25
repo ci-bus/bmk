@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tap-hold · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Tap-hold</h1>
+<p class="lead">A tap-hold key sends a normal key when you tap it and acts as a modifier when you hold it. It lets small keyboards keep arrows or other keys where a modifier lives.</p>
+
+<h2>Defining a tap-hold key</h2>
+<p>Use one of the <code>TH_</code> macros in the keymap. The macro name is the modifier used when the key is held; the argument is the key sent on a tap:</p>
+<pre><code>TH_RSHIFT(HID_KEY_UP)
+TH_RCTRL(HID_KEY_RIGHT)
+TH_LGUI(HID_KEY_ESC)</code></pre>
+<p>The available macros are <code>TH_LCTRL</code>, <code>TH_LSHIFT</code>, <code>TH_LALT</code>, <code>TH_LGUI</code>, <code>TH_RCTRL</code>, <code>TH_RSHIFT</code>, <code>TH_RALT</code> and <code>TH_RGUI</code>. The tap key must be a standard key; media keys and firmware actions cannot be used as the tap action.</p>
+
+<h2>How it decides</h2>
+<table>
+  <tr><th>What you do</th><th>What is sent</th></tr>
+  <tr><td>Press and release quickly</td><td>The tap key, when the key is released.</td></tr>
+  <tr><td>Hold longer than <code>TAP_HOLD_PRESS_DELAY</code></td><td>The modifier, until the key is released.</td></tr>
+  <tr><td>Press another key while the tap-hold key is down</td><td>The modifier is applied immediately to that key, without waiting for the delay.</td></tr>
+  <tr><td>Tap, then press again within <code>TAP_HOLD_RELEASE_DELAY</code> and hold</td><td>The tap key held down, so it repeats like a normal key.</td></tr>
+</table>
+<p>The third row is what makes fast typing work: typing Shift + letter with a tap-hold Shift does not require waiting for the hold delay.</p>
+<p>The fourth row gives you key repeat for the tap key. For example, with <code>TH_RSHIFT(HID_KEY_UP)</code>, tap once and then hold to keep moving up.</p>
+
+<h2>Timing options</h2>
+<p>Set them in <code>keyboard.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>TAP_HOLD_PRESS_DELAY</code></td><td>175</td><td>Time in ms a key must be held to become a modifier.</td></tr>
+  <tr><td><code>TAP_HOLD_RELEASE_DELAY</code></td><td>150</td><td>Time in ms after a tap during which pressing again holds the tap key.</td></tr>
+  <tr><td><code>TAP_HOLD_SIZE_ARRAY</code></td><td>3</td><td>How many tap-hold keys can be waiting for their decision at the same time.</td></tr>
+</table>
+<p>If taps are being read as holds, raise <code>TAP_HOLD_PRESS_DELAY</code>. If holding feels slow to react, lower it.</p>
+</main>
+</body>
+</html>

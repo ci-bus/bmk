@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Encoders · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Encoders</h1>
+<p class="lead">BMK supports one rotary encoder. Each direction of rotation sends a keycode chosen in the keymap.</p>
+
+<h2>Enable the encoder</h2>
+<p>In <code>keyboard.h</code>:</p>
+<pre><code>#define ENCODERS 1</code></pre>
+<p>In <code>keyboard.c</code>, give the two pins connected to the A and B outputs of the encoder:</p>
+<pre><code>const uint16_t pin_encoders[ENCODERS * ENCODER_PINS] = {
+    P0(6),
+    P0(5),
+};</code></pre>
+<p>The common pin of the encoder goes to ground. The firmware enables the internal pull-ups on both pins, so no external resistors are required.</p>
+<p>On keyboards without an encoder set <code>ENCODERS</code> to <code>0</code>. In that case <code>pin_encoders</code> is not needed and the keymap has no encoder entries.</p>
+
+<h2>Assign keycodes</h2>
+<p>Each layer of the keymap ends with two entries for the encoder, one per direction:</p>
+<pre><code>const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS] = {
+    {
+        /* matrix keys */
+        HID_KEY_VOLUME_DOWN, HID_KEY_VOLUME_UP
+    },
+    {
+        /* matrix keys */
+        HID_KEY_PREV_TRACK, HID_KEY_NEXT_TRACK
+    }};</code></pre>
+<p>Each step of the encoder sends a press and a release of the keycode. <code>HID_KEY_TRANS</code> works here as well, to reuse the keycodes of the layer below.</p>
+
+<div class="note">
+  <p>If the encoder works backwards, swap the two keycodes in the keymap or the two pins in <code>pin_encoders</code>.</p>
+</div>
+
+<h2>Push button</h2>
+<p>The push switch of an encoder is wired like any other key of the matrix and gets its keycode in the normal part of the keymap.</p>
+
+<h2>Sleep</h2>
+<p>Turning the encoder wakes the keyboard up, the same as pressing a key. See <a href="power.html">Sleep and power</a>.</p>
+
+<h2>Options</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>ENCODERS</code></td><td>0</td><td>Number of encoders: 0 or 1.</td></tr>
+  <tr><td><code>DEBOUNCE_ENCODER</code></td><td>5</td><td>Time in ms the encoder must rest in a detent before the step is sent.</td></tr>
+</table>
+</main>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RGB lighting · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>RGB lighting</h1>
+<p class="lead">BMK drives a chain of WS2812 addressable LEDs from a single pin, with one colour for the whole chain or an animated colour cycle.</p>
+
+<h2>Enable the LEDs</h2>
+<p>In <code>keyboard.h</code>:</p>
+<pre><code>#define RGB true
+#define RGB_PORT 0
+#define RGB_PIN 26
+#define RGB_LEDS 15</code></pre>
+<table>
+  <tr><th>Define</th><th>Meaning</th></tr>
+  <tr><td><code>RGB</code></td><td>Enables the lighting.</td></tr>
+  <tr><td><code>RGB_PORT</code></td><td>GPIO port of the data pin: <code>0</code> or <code>1</code>.</td></tr>
+  <tr><td><code>RGB_PIN</code></td><td>Pin number of the data pin inside that port.</td></tr>
+  <tr><td><code>RGB_LEDS</code></td><td>Number of LEDs in the chain.</td></tr>
+</table>
+<p>The example is the data pin on P0.26 with fifteen LEDs. These four lines are read by the build system, so write them exactly in this form and rebuild with <code>-p always</code> after changing them. See <a href="building.html">Building</a>.</p>
+
+<div class="warn">
+  <p>The LED data is generated with an SPI peripheral whose clock output is assigned to <strong>P0.18</strong>. Do not use P0.18 for the matrix or for anything else on a keyboard with RGB.</p>
+</div>
+
+<h2>Keys</h2>
+<table>
+  <tr><th>Keycode</th><th>Action</th></tr>
+  <tr><td><code>HID_KEY_RGB_TOGGLE</code></td><td>Turns the LEDs on or off.</td></tr>
+  <tr><td><code>HID_KEY_RGB_ON</code></td><td>Turns the LEDs on.</td></tr>
+  <tr><td><code>HID_KEY_RGB_OFF</code></td><td>Turns the LEDs off.</td></tr>
+  <tr><td><code>HID_KEY_RGB_LIGHT</code></td><td>Raises the brightness by <code>RGB_LIGHT_JUMP</code>. After the maximum it starts again from the minimum.</td></tr>
+  <tr><td><code>HID_KEY_RGB_COLOR</code></td><td>Advances the colour by <code>RGB_COLOR_JUMP</code> around the colour wheel.</td></tr>
+</table>
+<p>Brightness and colour go from 0 to 255. The lighting state is not saved: after a restart the LEDs go back to full brightness and to the state given by <code>RGB_ON_STARTUP</code>.</p>
+
+<h2>Animation</h2>
+<p>With <code>RGB_EFFECTS</code> enabled, which is the default when <code>RGB</code> is on, all the LEDs cycle together through the colour wheel. The colour advances one step every 60 ms and the brightness set with <code>HID_KEY_RGB_LIGHT</code> still applies.</p>
+<p>For a fixed colour that you choose with <code>HID_KEY_RGB_COLOR</code>, switch the animation off:</p>
+<pre><code>#define RGB_EFFECTS false</code></pre>
+<div class="note">
+  <p>The source also contains a rainbow and a scanner effect. They are not selectable yet; the colour cycle is the only animation in use.</p>
+</div>
+
+<h2>Lighting and power</h2>
+<ul>
+  <li>The firmware turns the LEDs off by cutting their supply through the <a href="power.html#external-power">external power</a> pin. This happens when you turn them off with a key and when the keyboard falls asleep.</li>
+  <li>A PCB with LEDs should therefore have <code>POWER_EXT</code>. Without it the firmware only stops sending data, and the LEDs keep showing their last colour.</li>
+  <li>LEDs draw much more current than the rest of the keyboard. On battery, keep them off or dim.</li>
+</ul>
+
+<h2>Options</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>RGB</code></td><td><code>false</code></td><td>Enables the lighting.</td></tr>
+  <tr><td><code>RGB_PORT</code>, <code>RGB_PIN</code>, <code>RGB_LEDS</code></td><td>none</td><td>Data pin and length of the chain. Required with <code>RGB</code>.</td></tr>
+  <tr><td><code>RGB_ON_STARTUP</code></td><td><code>true</code></td><td>Whether the LEDs are on when the keyboard starts.</td></tr>
+  <tr><td><code>RGB_EFFECTS</code></td><td>same as <code>RGB</code></td><td>Enables the colour cycle animation.</td></tr>
+  <tr><td><code>RGB_LIGHT_JUMP</code></td><td>32</td><td>Brightness step of <code>HID_KEY_RGB_LIGHT</code>.</td></tr>
+  <tr><td><code>RGB_COLOR_JUMP</code></td><td>5</td><td>Colour step of <code>HID_KEY_RGB_COLOR</code>.</td></tr>
+</table>
+</main>
+</body>
+</html>

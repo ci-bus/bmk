@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keymaps and layers · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Keymaps and layers</h1>
+<p class="lead">The keymap decides what every switch sends. It lives in the <code>keymap.c</code> file of each keyboard folder.</p>
+
+<h2>Structure of keymap.c</h2>
+<p>The keymap is a single array called <code>layers</code>. Each layer lists one keycode per matrix position, followed by two keycodes per encoder:</p>
+<pre><code>#include "keyboard.h"
+
+const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS] = {
+    {
+        HID_KEY_ESC,   HID_KEY_1,    HID_KEY_2,    HID_KEY_3,
+        HID_KEY_TAB,   HID_KEY_Q,    HID_KEY_W,    HID_KEY_E,
+        HID_KEY_LCTRL, HID_KEY_LGUI, HID_KEY_SPACE, FN_MO(1),
+        HID_KEY_VOLUME_DOWN, HID_KEY_VOLUME_UP
+    },
+    {
+        HID_BT_CLEAR,  HID_KEY_F1,   HID_KEY_F2,   HID_KEY_F3,
+        HID_KEY_NONE,  HID_KEY_NONE, HID_KEY_UP,   HID_KEY_NONE,
+        HID_KEY_TRANS, HID_KEY_NONE, HID_KEY_RGB_TOGGLE, HID_KEY_TRANS,
+        HID_KEY_NONE, HID_KEY_NONE
+    }};</code></pre>
+<p>This example is a keyboard with 4 columns, 3 rows, one encoder and two layers.</p>
+
+<h3>Order of the keys</h3>
+<p>Keys are written row by row. The position of a key in the array is:</p>
+<pre><code>index = row * MATRIX_COLS + column</code></pre>
+<p>The rows and columns are the electrical ones defined in <code>keyboard.c</code>, which do not always match the physical rows of the keyboard. If a key sends the wrong character, find its row and column pins and fix the entry at that index.</p>
+<p>After the last matrix row come the encoder entries: two per encoder, one for each direction. See <a href="encoders.html">Encoders</a>.</p>
+
+<h3>Empty positions</h3>
+<p>Matrix positions without a switch must still have an entry. Use <code>HID_KEY_NONE</code>.</p>
+
+<h2 id="layers">Layers</h2>
+<p>The number of layers is set with <code>LAYERS</code> in <code>keyboard.h</code>. Layer 0 is the one active when the keyboard starts.</p>
+<table>
+  <tr><th>Keycode</th><th>Behaviour</th></tr>
+  <tr><td><code>FN_MO(n)</code></td><td>Momentary: layer <code>n</code> is active while the key is held. Releasing it returns to the previous layer.</td></tr>
+  <tr><td><code>FN_TO(n)</code></td><td>Switch: layer <code>n</code> becomes active when the key is released and stays active. Put a <code>FN_TO(0)</code> on that layer to come back.</td></tr>
+  <tr><td><code>HID_KEY_TRANS</code></td><td>Transparent: the key does what the layer below does.</td></tr>
+  <tr><td><code>HID_KEY_NONE</code></td><td>Nothing: the key is ignored on this layer.</td></tr>
+</table>
+
+<div class="note">
+  <p>On the layer you reach with <code>FN_MO(n)</code>, put <code>HID_KEY_TRANS</code> in the same position as the <code>FN_MO(n)</code> key, so the key release is still seen and the layer is left.</p>
+</div>
+
+<p>When the active layer changes, every key that was held is released on the host. This prevents a key from staying pressed if it means something else on the new layer.</p>
+
+<h2>What a key can be</h2>
+<ul>
+  <li>A standard key, a modifier or a media key. See <a href="keycodes.html">Keycodes</a>.</li>
+  <li>A <a href="tap-hold.html">tap-hold</a> key: a keycode when tapped, a modifier when held.</li>
+  <li>A layer key, as described above.</li>
+  <li>A firmware action: Bluetooth, RGB, sleep, gaming mode, reset. They are listed in <a href="keycodes.html#firmware-actions">Keycodes</a>.</li>
+</ul>
+
+<h2>Limits</h2>
+<ul>
+  <li>Up to six standard keys can be held at the same time, plus any combination of the eight modifiers.</li>
+  <li>Up to six media keys can be held at the same time.</li>
+</ul>
+
+<h2>Applying changes</h2>
+<p>After editing <code>keymap.c</code>, <a href="building.html">build</a> and <a href="flashing.html">flash</a> again. A normal build is enough; no clean build is needed.</p>
+</main>
+</body>
+</html>

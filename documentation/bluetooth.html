@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bluetooth · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Bluetooth</h1>
+<p class="lead">On battery the keyboard works as a Bluetooth Low Energy HID keyboard. It is compatible with macOS, iOS, Windows, Linux and Android.</p>
+
+<h2>Pairing</h2>
+<ol>
+  <li>Press any key to make sure the keyboard is awake.</li>
+  <li>Open the Bluetooth settings of the host and select <strong>BMK Keyboard</strong>.</li>
+</ol>
+<p>Pairing needs no PIN. The link is encrypted, and the keyboard closes the connection if the host does not encrypt it.</p>
+
+<h2>One host at a time</h2>
+<p>The keyboard remembers a single host. After pairing, that host reconnects by itself whenever the keyboard is visible again.</p>
+<p>To use the keyboard with another host, press the key mapped to <code>HID_BT_CLEAR</code>. The keyboard then:</p>
+<ol>
+  <li>Closes the current connection and forgets the paired host.</li>
+  <li>Takes a new Bluetooth address, so the previous host no longer recognises it.</li>
+  <li>Restarts and becomes visible for pairing.</li>
+</ol>
+<div class="note">
+  <p>After a <code>HID_BT_CLEAR</code>, remove the old <strong>BMK Keyboard</strong> entry from the Bluetooth list of the previous host. To use that host again, pair as if it were a new keyboard.</p>
+</div>
+
+<h2>When the keyboard is visible</h2>
+<table>
+  <tr><th>Situation</th><th>Advertising</th></tr>
+  <tr><td>Start-up, or wake-up with Bluetooth off</td><td>Fast (every 100 to 150 ms), until a host connects or the keyboard reaches deep sleep.</td></tr>
+  <tr><td>The connection is lost or the host disconnects</td><td>Slow (every 1 to 1.2 s) for <code>SLEEP_TIMEOUT_ADV</code> seconds (5 minutes by default). If nothing connects in that time, Bluetooth is turned off.</td></tr>
+  <tr><td>Bluetooth off</td><td>None. Press any key to turn Bluetooth on again and advertise fast.</td></tr>
+</table>
+<p>The slow interval saves battery while still letting the host or the <a href="dongle.html">USB dongle</a> reconnect by itself, for example after the computer wakes up or the dongle is plugged in again. With the slow interval a reconnection can take a few seconds.</p>
+<p>The complete list of power states is in <a href="power.html">Sleep and power</a>.</p>
+
+<h2>Bluetooth and USB together</h2>
+<p>When the USB cable is connected, key presses are sent over USB only. Bluetooth stays on and a paired host can remain connected, but it receives no keys until the cable is unplugged. See <a href="usb.html">USB</a>.</p>
+
+<h2>Free mark for the dongle</h2>
+<p>A keyboard that has no paired host adds a small BMK mark to its advertising. The <a href="dongle.html">USB dongle</a> uses that mark to find keyboards it is allowed to connect to. Pairing with a computer removes the mark; <code>HID_BT_CLEAR</code> brings it back.</p>
+
+<h2>Radio settings</h2>
+<p>These values are set in <code>app/prj.conf</code>:</p>
+<table>
+  <tr><th>Setting</th><th>Value</th><th>Kconfig symbol</th></tr>
+  <tr><td>Device name</td><td>BMK Keyboard</td><td><code>CONFIG_BT_DEVICE_NAME</code></td></tr>
+  <tr><td>Transmit power</td><td>+8 dBm</td><td><code>CONFIG_BT_CTLR_TX_PWR_PLUS_8</code></td></tr>
+  <tr><td>Simultaneous connections</td><td>1</td><td><code>CONFIG_BT_MAX_CONN</code></td></tr>
+  <tr><td>Paired hosts</td><td>1</td><td><code>CONFIG_BT_MAX_PAIRED</code></td></tr>
+  <tr><td>Preferred connection interval</td><td>7.5 to 11.25 ms</td><td><code>CONFIG_BT_PERIPHERAL_PREF_MIN_INT</code>, <code>CONFIG_BT_PERIPHERAL_PREF_MAX_INT</code></td></tr>
+  <tr><td>Preferred peripheral latency</td><td>150</td><td><code>CONFIG_BT_PERIPHERAL_PREF_LATENCY</code></td></tr>
+  <tr><td>Supervision timeout</td><td>4 s</td><td><code>CONFIG_BT_PERIPHERAL_PREF_TIMEOUT</code></td></tr>
+</table>
+
+<h2>Services</h2>
+<ul>
+  <li><strong>HID over GATT</strong>, with report protocol and boot protocol.</li>
+  <li><strong>Battery Service</strong>, with the <a href="battery.html">battery level</a>.</li>
+  <li><strong>Device Information Service</strong>.</li>
+</ul>
+</main>
+</body>
+</html>

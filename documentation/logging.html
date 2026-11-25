@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logs · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Logs</h1>
+<p class="lead">A firmware built with logs prints what it is doing on a USB serial port: start-up, Bluetooth connections, pairing and errors.</p>
+
+<h2>Enable logs</h2>
+<p>For a keyboard, add this line to its <code>keyboard.h</code>:</p>
+<pre><code>#define LOGS true</code></pre>
+<p>For the dongle, change the same line in <code>app/src/dongle/dongle.h</code>.</p>
+<p>Then rebuild with a clean build folder, because logs add a USB serial device to the configuration:</p>
+<pre><code>west build -p always -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
+
+<h2>Read the logs</h2>
+<p>Connect the keyboard with the USB cable. In addition to the keyboard, the computer now detects a serial port. Open it with any serial terminal, for example:</p>
+<pre><code>screen /dev/tty.usbmodem* 115200</code></pre>
+<p>On Linux the port is usually <code>/dev/ttyACM0</code>; on Windows it is a COM port that you can open with PuTTY.</p>
+<p>Typical messages, each preceded by a timestamp and its level:</p>
+<pre><code>[BLE] MAC identity: E1:23:45:67:89:AB
+BMK Keyboard started!
+Advertising...
+Connected...
+Security changed L2 OK!
+Pairing complete!</code></pre>
+
+<div class="note">
+  <p>Logs travel over USB, so they are only visible with the cable connected. In that situation the keyboard sends its keys over USB and does not sleep, but Bluetooth keeps working and its connection messages are still printed.</p>
+</div>
+
+<h2>Log level</h2>
+<p>The default level is the most detailed one. To print less, define <code>LOG_LEVEL</code> in <code>keyboard.h</code> with one of the Zephyr levels:</p>
+<pre><code>#define LOG_LEVEL LOG_LEVEL_INF</code></pre>
+<table>
+  <tr><th>Level</th><th>Prints</th></tr>
+  <tr><td><code>LOG_LEVEL_ERR</code></td><td>Errors only.</td></tr>
+  <tr><td><code>LOG_LEVEL_WRN</code></td><td>Errors and warnings.</td></tr>
+  <tr><td><code>LOG_LEVEL_INF</code></td><td>Errors, warnings and information.</td></tr>
+  <tr><td><code>LOG_LEVEL_DBG</code></td><td>Everything. This is the default.</td></tr>
+</table>
+
+<h2>When you finish</h2>
+<p>Set <code>LOGS</code> back to <code>false</code> and rebuild with <code>-p always</code>. A firmware with logs exposes an extra USB serial device and is meant for debugging, not for daily use.</p>
+
+<h2>Crashes</h2>
+<p>If the firmware hits a fatal error, it restarts by itself instead of staying blocked. A keyboard that reconnects for no reason may be restarting; logs will show the start-up messages again when that happens.</p>
+</main>
+</body>
+</html>

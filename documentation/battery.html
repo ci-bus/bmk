@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battery · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Battery</h1>
+<p class="lead">The keyboard measures its supply voltage and reports the battery level to the host over Bluetooth, where it shows up next to the device name.</p>
+
+<h2>How it is measured</h2>
+<p>The chip measures its own high-voltage supply input (VDDH) internally. No voltage divider and no extra pin are needed on the PCB.</p>
+<p>The voltage is converted to a percentage with a curve for single-cell lithium batteries:</p>
+<table>
+  <tr><th>Voltage</th><th>Level</th></tr>
+  <tr><td>Below 3.3 V</td><td>1 %</td></tr>
+  <tr><td>3.3 V to 3.5 V</td><td>0 % to 10 %</td></tr>
+  <tr><td>3.5 V to 3.6 V</td><td>10 % to 20 %</td></tr>
+  <tr><td>3.6 V to 3.8 V</td><td>20 % to 80 %</td></tr>
+  <tr><td>3.8 V to 3.9 V</td><td>80 % to 90 %</td></tr>
+  <tr><td>3.9 V to 4.1 V</td><td>90 % to 100 %</td></tr>
+</table>
+
+<h2>When it is updated</h2>
+<ul>
+  <li>Measuring starts when a host pairs and every time the keyboard wakes up, and repeats every <code>BAT_UPDATE</code> seconds. It stops during sleep.</li>
+  <li>The first reading is used as it is. After that the reported value moves in small steps towards each new reading, so it does not jump when the voltage dips for a moment.</li>
+  <li>The host is notified only when the percentage changes.</li>
+</ul>
+
+<h2>Options</h2>
+<p>Set them in <code>keyboard.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>BATTERY</code></td><td><code>true</code></td><td>Enables the battery measurement.</td></tr>
+  <tr><td><code>BAT_UPDATE</code></td><td>60</td><td>Time in seconds between two measurements.</td></tr>
+  <tr><td><code>BAT_SMOTHING</code></td><td>0.1f</td><td>Step, in percentage points, by which the reported level falls on each measurement. It rises twice as fast.</td></tr>
+</table>
+</main>
+</body>
+</html>

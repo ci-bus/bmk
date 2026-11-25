@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sleep and power · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Sleep and power</h1>
+<p class="lead">On battery the keyboard lowers its consumption in steps as it stays idle. A key press always brings it back.</p>
+
+<h2>Power states</h2>
+<table>
+  <tr><th>State</th><th>Entered</th><th>What happens</th></tr>
+  <tr><td><strong>Awake</strong></td><td>On any key press or encoder step</td><td>The matrix is scanned continuously, every <code>CYCLE_DELAY</code> microseconds.</td></tr>
+  <tr><td><strong>Sleep</strong></td><td>After <code>SLEEP_TIMEOUT</code> seconds without activity (10 by default)</td><td>Scanning stops and the processor waits for a key press. The Bluetooth connection is kept, so typing resumes at once.</td></tr>
+  <tr><td><strong>Deep sleep</strong></td><td>After <code>DEEP_SLEEP_TIMEOUT</code> minutes asleep (30 by default)</td><td>Bluetooth is turned off. The next key press turns it on again and the host reconnects.</td></tr>
+</table>
+
+<h3>Details of each step</h3>
+<ul>
+  <li>The keyboard does not sleep while a key is held or while the USB cable is connected.</li>
+  <li>While it is advertising fast and waiting for a host, the keyboard stays awake for <code>SLEEP_TIMEOUT_ADV</code> seconds (300 by default) instead of <code>SLEEP_TIMEOUT</code>.</li>
+  <li>When it falls asleep, the battery measurement and the RGB animation stop, and the <a href="#external-power">external power</a> pin is switched off.</li>
+  <li>Any key and the encoder wake the keyboard up. The key that wakes it is processed normally.</li>
+</ul>
+
+<h2>Other ways into deep sleep</h2>
+<ul>
+  <li><strong>The key <code>HID_DEEP_SLEEP</code></strong>: turns Bluetooth off as soon as the key is released. Useful before putting the keyboard in a bag.</li>
+  <li><strong>A lost connection</strong>: after a disconnection the keyboard advertises slowly for <code>SLEEP_TIMEOUT_ADV</code> seconds. If no host connects in that time, Bluetooth is turned off. See <a href="bluetooth.html">Bluetooth</a>.</li>
+</ul>
+<p>Deep sleep does not restart the firmware. Waking up keeps the active layer and the rest of the keyboard state.</p>
+
+<h2>Timing options</h2>
+<p>Set them in <code>keyboard.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>SLEEP_TIMEOUT</code></td><td>10</td><td>s</td><td>Idle time before sleep.</td></tr>
+  <tr><td><code>SLEEP_TIMEOUT_ADV</code></td><td>300</td><td>s</td><td>Idle time before sleep while advertising fast, and duration of the slow advertising after a disconnection.</td></tr>
+  <tr><td><code>DEEP_SLEEP_TIMEOUT</code></td><td>30</td><td>min</td><td>Time asleep before Bluetooth is turned off.</td></tr>
+  <tr><td><code>CYCLE_DELAY</code></td><td>1000</td><td>µs</td><td>Pause between two scans of the matrix while awake. A larger value lowers consumption and raises latency.</td></tr>
+</table>
+
+<h2 id="external-power">External power</h2>
+<p>Some PCBs feed power-hungry parts, such as the LEDs, from a regulator or switch controlled by a pin of the microcontroller. BMK can drive that pin so those parts draw nothing while the keyboard sleeps.</p>
+<p>Enable it in <code>keyboard.h</code> and give the pin in <code>keyboard.c</code>:</p>
+<pre><code>#define POWER_EXT true</code></pre>
+<pre><code>const uint16_t pin_power_ext = P1(9);</code></pre>
+<p>The pin is driven high to switch the power on and low to switch it off.</p>
+<div class="warn">
+  <p><code>POWER_EXT</code> can only be enabled together with <code>RGB</code>. A keyboard with <code>POWER_EXT</code> and without <code>RGB</code> does not compile.</p>
+</div>
+
+<h3>Behaviour</h3>
+<table>
+  <tr><th>Situation</th><th>Pin</th></tr>
+  <tr><td>Keyboard asleep</td><td>Off.</td></tr>
+  <tr><td>Keyboard awake, <code>POWER_EXT_RGB_LINKED</code> true</td><td>Follows the RGB lighting: on when the LEDs are on, off when they are off.</td></tr>
+  <tr><td>Keyboard awake, <code>POWER_EXT_RGB_LINKED</code> false</td><td>Follows its own state, which starts as <code>POWER_EXT_ON</code> and changes with <code>HID_KEY_POWER_ON</code> and <code>HID_KEY_POWER_OFF</code>.</td></tr>
+</table>
+<p>With <code>POWER_EXT_RGB_LINKED</code> true, <code>HID_KEY_POWER_ON</code> and <code>HID_KEY_POWER_OFF</code> also turn the RGB lighting on and off.</p>
+
+<h3>Options</h3>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>POWER_EXT</code></td><td><code>false</code></td><td>Enables the external power pin.</td></tr>
+  <tr><td><code>POWER_EXT_RGB_LINKED</code></td><td><code>true</code></td><td>Ties the pin to the state of the RGB lighting.</td></tr>
+  <tr><td><code>POWER_EXT_RGB_DELAY</code></td><td>5</td><td>Time in ms to wait after switching the power on before sending data to the LEDs.</td></tr>
+  <tr><td><code>POWER_EXT_ON</code></td><td><code>true</code></td><td>Initial state of the pin when it is not linked to the RGB lighting.</td></tr>
+</table>
+</main>
+</body>
+</html>

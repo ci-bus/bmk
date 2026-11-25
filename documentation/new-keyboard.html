@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adding a keyboard · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Adding a keyboard</h1>
+<p class="lead">A keyboard is a folder with three files: the options, the pins and the keymap. No other part of the firmware has to be touched.</p>
+
+<h2>Before you start</h2>
+<p>You need to know, from the schematic of the PCB:</p>
+<ul>
+  <li>Which chip it uses: nRF52840 or nRF52833.</li>
+  <li>Which pin of the chip each column and each row of the matrix is connected to.</li>
+  <li>The direction of the diodes.</li>
+  <li>The pins of the encoder, of the LED data line and of the external power switch, if the PCB has them.</li>
+</ul>
+
+<h3>Matrix wiring</h3>
+<p>The firmware drives one column high at a time and reads the rows, which have their internal pull-down resistors enabled. Current therefore flows from the column, through the switch and the diode, into the row:</p>
+<pre><code>column pin ──── switch ──── diode ▶| ──── row pin</code></pre>
+<p>The cathode of each diode, the side marked with a line, must face the row. A PCB with the diodes the other way round can still be used by declaring its rows as columns and its columns as rows.</p>
+
+<h2>1. Create the folder</h2>
+<p>Keyboards live in <code>app/keyboards/&lt;vendor&gt;/&lt;keyboard&gt;</code>. The easiest start is to copy an existing one:</p>
+<pre><code>cp -r app/keyboards/miguelio/mk60v2 app/keyboards/myname/mykeyboard</code></pre>
+
+<h2>2. keyboard.h: options</h2>
+<pre><code>#ifndef KEYBOARD_H
+#define KEYBOARD_H
+
+#include "bmk.h"
+
+#define MATRIX_COLS 3
+#define MATRIX_ROWS 2
+#define LAYERS 2
+#define ENCODERS 0
+
+extern const uint16_t layers[LAYERS][MATRIX_COLS * MATRIX_ROWS + ENCODERS * ENCODER_PINS];
+
+#endif</code></pre>
+<p>The four defines shown are required. Everything else is optional and listed in <a href="configuration.html">Configuration options</a>. Add here what your PCB has:</p>
+<table>
+  <tr><th>The PCB has</th><th>Add</th><th>Details</th></tr>
+  <tr><td>A rotary encoder</td><td><code>#define ENCODERS 1</code></td><td><a href="encoders.html">Encoders</a></td></tr>
+  <tr><td>WS2812 LEDs</td><td><code>RGB</code>, <code>RGB_PORT</code>, <code>RGB_PIN</code>, <code>RGB_LEDS</code></td><td><a href="rgb.html">RGB lighting</a></td></tr>
+  <tr><td>A switchable supply for the LEDs</td><td><code>#define POWER_EXT true</code></td><td><a href="power.html#external-power">External power</a></td></tr>
+</table>
+
+<h2>3. keyboard.c: pins</h2>
+<pre><code>#include "keyboard.h"
+
+const uint16_t pin_cols[MATRIX_COLS] = {
+    P0(28),
+    P0(15),
+    P1(0),
+};
+
+const uint16_t pin_rows[MATRIX_ROWS] = {
+    P0(13),
+    P0(24),
+};</code></pre>
+<ul>
+  <li><code>P0(n)</code> is pin <code>n</code> of port 0 and <code>P1(n)</code> is pin <code>n</code> of port 1: <code>P1(9)</code> is the pin called P1.09 in the datasheet.</li>
+  <li><code>pin_cols</code> and <code>pin_rows</code> need exactly <code>MATRIX_COLS</code> and <code>MATRIX_ROWS</code> entries. Their order defines the column and row numbers used by the keymap.</li>
+</ul>
+
+<h3>Optional pins</h3>
+<p>Add the encoder pins when <code>ENCODERS</code> is 1 and the external power pin when <code>POWER_EXT</code> is enabled. Leave them out otherwise.</p>
+<pre><code>const uint16_t pin_encoders[ENCODERS * ENCODER_PINS] = {
+    P0(6),
+    P0(5),
+};
+
+const uint16_t pin_power_ext = P1(9);</code></pre>
+
+<div class="note">
+  <p>Modules such as the E73 have their own pin numbers. Use the table in the module manual to translate each module pad to the pin name of the chip (P0.xx or P1.xx), which is what the firmware needs.</p>
+</div>
+
+<h3>Pins to keep free</h3>
+<ul>
+  <li><strong>P0.18</strong> on keyboards with <code>RGB</code>: it is taken by the peripheral that generates the LED data.</li>
+</ul>
+
+<h3>One keyboard, two chips</h3>
+<p>If the same PCB is built with both chips and a pin differs, select it at compile time:</p>
+<pre><code>#if defined(CONFIG_SOC_NRF52833_QIAA)
+#define COL4_PIN P1(5)
+#else
+#define COL4_PIN P1(13)
+#endif</code></pre>
+
+<h2>4. keymap.c: keys</h2>
+<p>One keycode per matrix position, row by row, for every layer. See <a href="keymap.html">Keymaps and layers</a> for the format and <a href="keycodes.html">Keycodes</a> for the values.</p>
+<p>A good first keymap is a single layer where every position sends a different letter or number. Flash it, press every switch and note which position each one reports. Then write the real keymap.</p>
+
+<h2>5. Build and test</h2>
+<pre><code>cd app
+west build -p always -b nrf52840 -- -DKEYBOARD=myname/mykeyboard</code></pre>
+<p>Flash the result as described in <a href="flashing.html">Flashing</a> and check:</p>
+<ul>
+  <li>Every switch sends its key, over USB and over Bluetooth.</li>
+  <li>The encoder turns in the expected direction.</li>
+  <li>After ten seconds without typing, a key on each row wakes the keyboard up.</li>
+</ul>
+<p>If something does not behave as expected, build with <a href="logging.html">logs</a> and see <a href="troubleshooting.html">Troubleshooting</a>.</p>
+</main>
+</body>
+</html>

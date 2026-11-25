@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Installation · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Installation</h1>
+<p class="lead">BMK is built inside a Docker container that already contains the Zephyr SDK and the ARM toolchain, so nothing has to be installed by hand on your machine.</p>
+
+<h2>Requirements</h2>
+<ul>
+  <li><a href="https://www.docker.com/products/docker-desktop/">Docker Desktop</a> (macOS, Windows or Linux).</li>
+  <li><a href="https://code.visualstudio.com/">VS Code</a> with the <a href="https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers">Dev Containers</a> extension.</li>
+  <li>Git.</li>
+</ul>
+
+<h2>Set up the workspace</h2>
+<h3>1. Clone the repository</h3>
+<pre><code>git clone git@github.com:ci-bus/bmk.git
+cd bmk</code></pre>
+
+<h3>2. Open it in VS Code</h3>
+<pre><code>code .</code></pre>
+
+<h3>3. Reopen in the container</h3>
+<p>VS Code detects the <code>.devcontainer</code> folder and offers <strong>Reopen in Container</strong>. Accept it. The first time, Docker builds an image based on <code>zmkfirmware/zmk-dev-arm:3.5-branch</code>, which includes the Zephyr SDK, the ARM toolchain and <code>west</code>.</p>
+
+<h3>4. Download Zephyr</h3>
+<p>In the container terminal, from the root of the repository, run this once:</p>
+<pre><code>west init -l app/
+west update</code></pre>
+<p>This fetches Zephyr 3.6.0 and the modules the firmware needs (<code>cmsis</code>, <code>hal_nordic</code>, <code>mbedtls</code>, <code>tinycrypt</code> and <code>segger</code>). The versions are pinned in <code>app/west.yml</code>.</p>
+
+<div class="note">
+  <p>Zephyr and its modules are stored in Docker volumes, so they survive container rebuilds and you only download them once.</p>
+</div>
+
+<p>The workspace is ready. Continue with <a href="building.html">Building</a>.</p>
+
+<h2>Docker volumes</h2>
+<table>
+  <tr><th>Volume</th><th>Mounted at</th><th>Content</th></tr>
+  <tr><td><code>bmk-zephyr</code></td><td><code>zephyr/</code></td><td>Zephyr RTOS source</td></tr>
+  <tr><td><code>bmk-modules</code></td><td><code>modules/</code></td><td>HALs and libraries</td></tr>
+  <tr><td><code>bmk-tools</code></td><td><code>tools/</code></td><td>Build tools</td></tr>
+  <tr><td><code>bmk-bootloader</code></td><td><code>bootloader/</code></td><td>Reserved for bootloader sources; empty with the current manifest</td></tr>
+  <tr><td><code>bmk-root-user</code></td><td><code>/root</code></td><td>User cache and west configuration</td></tr>
+</table>
+
+<h2>Start from scratch</h2>
+<p>To discard the downloaded workspace, close the container and remove the volumes. The next time you open the container, repeat step 4.</p>
+<pre><code>docker volume rm bmk-zephyr bmk-modules bmk-tools bmk-bootloader bmk-root-user</code></pre>
+</main>
+</body>
+</html>

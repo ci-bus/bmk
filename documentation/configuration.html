@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configuration options · BMK docs</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+<main>
+<h1>Configuration options</h1>
+<p class="lead">Every keyboard is configured with <code>#define</code> lines in its <code>keyboard.h</code>. This page lists all of them with their default values.</p>
+
+<h2>How options work</h2>
+<p>Open <code>app/keyboards/&lt;vendor&gt;/&lt;keyboard&gt;/keyboard.h</code> and add a line for each option you want to change:</p>
+<pre><code>#define DEBOUNCE_PRESS 8
+#define SLEEP_TIMEOUT 30</code></pre>
+<p>An option that is not defined takes the default shown in the tables. After changing an option, <a href="building.html">build</a> and <a href="flashing.html">flash</a> again. Only <code>RGB</code> and <code>LOGS</code> need a clean build with <code>-p always</code>.</p>
+
+<h2>Required</h2>
+<p>These four must be defined in every <code>keyboard.h</code>.</p>
+<table>
+  <tr><th>Option</th><th>Meaning</th></tr>
+  <tr><td><code>MATRIX_COLS</code></td><td>Number of columns of the key matrix.</td></tr>
+  <tr><td><code>MATRIX_ROWS</code></td><td>Number of rows of the key matrix.</td></tr>
+  <tr><td><code>LAYERS</code></td><td>Number of layers in the keymap.</td></tr>
+  <tr><td><code>ENCODERS</code></td><td>Number of rotary encoders: <code>0</code> or <code>1</code>.</td></tr>
+</table>
+
+<h2>Scanning and debounce</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>CYCLE_DELAY</code></td><td>1000</td><td>µs</td><td>Pause between two scans of the matrix.</td></tr>
+  <tr><td><code>GAMING_CYCLE_DELAY</code></td><td>100</td><td>µs</td><td>Pause between two scans in <a href="gaming.html">gaming mode</a>.</td></tr>
+  <tr><td><code>DEBOUNCE_PRESS</code></td><td>5</td><td>ms</td><td>Time a key must read as pressed before the press is sent.</td></tr>
+  <tr><td><code>DEBOUNCE_RELEASE</code></td><td>15</td><td>ms</td><td>Time a key must read as released before the release is sent.</td></tr>
+  <tr><td><code>DEBOUNCE_ENCODER</code></td><td>5</td><td>ms</td><td>Time the encoder must rest before a step is sent.</td></tr>
+</table>
+<p>Debounce times are counted in scan cycles, so the real time is slightly longer than the configured value. If a switch produces double characters, raise <code>DEBOUNCE_PRESS</code> and <code>DEBOUNCE_RELEASE</code>.</p>
+
+<h2>Tap-hold</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>TAP_HOLD_PRESS_DELAY</code></td><td>175</td><td>ms</td><td>Hold time after which a tap-hold key becomes a modifier.</td></tr>
+  <tr><td><code>TAP_HOLD_RELEASE_DELAY</code></td><td>150</td><td>ms</td><td>Time after a tap during which pressing again holds the tap key.</td></tr>
+  <tr><td><code>TAP_HOLD_SIZE_ARRAY</code></td><td>3</td><td>keys</td><td>Tap-hold keys that can be undecided at the same time.</td></tr>
+</table>
+<p>See <a href="tap-hold.html">Tap-hold</a>.</p>
+
+<h2>Sleep</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>SLEEP_TIMEOUT</code></td><td>10</td><td>s</td><td>Idle time before the keyboard sleeps.</td></tr>
+  <tr><td><code>SLEEP_TIMEOUT_ADV</code></td><td>300</td><td>s</td><td>Idle time before sleep while advertising fast, and duration of the slow advertising after a disconnection.</td></tr>
+  <tr><td><code>DEEP_SLEEP_TIMEOUT</code></td><td>30</td><td>min</td><td>Time asleep before Bluetooth is turned off.</td></tr>
+</table>
+<p>See <a href="power.html">Sleep and power</a>.</p>
+
+<h2>USB</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>USB</code></td><td><code>true</code></td><td></td><td>Includes the USB keyboard transport.</td></tr>
+  <tr><td><code>USB_CHECK_TIMEOUT</code></td><td>1000</td><td>ms</td><td>Time between checks of the USB cable.</td></tr>
+</table>
+<p>See <a href="usb.html">USB</a>.</p>
+
+<h2>RGB lighting</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>RGB</code></td><td><code>false</code></td><td>Enables the WS2812 LEDs.</td></tr>
+  <tr><td><code>RGB_PORT</code></td><td>none</td><td>GPIO port of the LED data pin. Required with <code>RGB</code>.</td></tr>
+  <tr><td><code>RGB_PIN</code></td><td>none</td><td>Pin number of the LED data pin. Required with <code>RGB</code>.</td></tr>
+  <tr><td><code>RGB_LEDS</code></td><td>none</td><td>Number of LEDs. Required with <code>RGB</code>.</td></tr>
+  <tr><td><code>RGB_ON_STARTUP</code></td><td><code>true</code></td><td>LEDs on when the keyboard starts.</td></tr>
+  <tr><td><code>RGB_EFFECTS</code></td><td>same as <code>RGB</code></td><td>Enables the colour cycle animation.</td></tr>
+  <tr><td><code>RGB_LIGHT_JUMP</code></td><td>32</td><td>Brightness step, out of 255.</td></tr>
+  <tr><td><code>RGB_COLOR_JUMP</code></td><td>5</td><td>Colour step, out of 255.</td></tr>
+</table>
+<p>See <a href="rgb.html">RGB lighting</a>.</p>
+
+<h2>External power</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>POWER_EXT</code></td><td><code>false</code></td><td></td><td>Enables the external power pin. Requires <code>RGB</code>.</td></tr>
+  <tr><td><code>POWER_EXT_RGB_LINKED</code></td><td><code>true</code></td><td></td><td>The pin follows the state of the RGB lighting.</td></tr>
+  <tr><td><code>POWER_EXT_RGB_DELAY</code></td><td>5</td><td>ms</td><td>Wait after switching the power on before sending data to the LEDs.</td></tr>
+  <tr><td><code>POWER_EXT_ON</code></td><td><code>true</code></td><td></td><td>Initial state of the pin when it is not linked to the RGB lighting.</td></tr>
+</table>
+<p>See <a href="power.html#external-power">External power</a>.</p>
+
+<h2>Battery</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Unit</th><th>Meaning</th></tr>
+  <tr><td><code>BATTERY</code></td><td><code>true</code></td><td></td><td>Enables the battery measurement.</td></tr>
+  <tr><td><code>BAT_UPDATE</code></td><td>60</td><td>s</td><td>Time between two measurements.</td></tr>
+  <tr><td><code>BAT_SMOTHING</code></td><td>0.1f</td><td>%</td><td>Step by which the reported level falls on each measurement.</td></tr>
+</table>
+<p>See <a href="battery.html">Battery</a>.</p>
+
+<h2>Logs</h2>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>LOGS</code></td><td><code>false</code></td><td>Enables log messages over a USB serial port.</td></tr>
+  <tr><td><code>LOG_LEVEL</code></td><td><code>LOG_LEVEL_DBG</code></td><td>Most detailed level that is printed.</td></tr>
+</table>
+<p>See <a href="logging.html">Logs</a>.</p>
+
+<h2 id="project-settings">Project settings</h2>
+<p>Settings shared by all keyboards are Zephyr Kconfig symbols in <code>app/prj.conf</code>. The ones you are most likely to change:</p>
+<table>
+  <tr><th>Symbol</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td><code>CONFIG_BT_DEVICE_NAME</code></td><td>"BMK Keyboard"</td><td>Name shown in the Bluetooth list of the host.</td></tr>
+  <tr><td><code>CONFIG_USB_DEVICE_PRODUCT</code></td><td>"BMK Keyboard"</td><td>Name shown for the USB device.</td></tr>
+  <tr><td><code>CONFIG_USB_DEVICE_VID</code>, <code>CONFIG_USB_DEVICE_PID</code></td><td>0x1D50, 0x615E</td><td>USB vendor and product ID.</td></tr>
+  <tr><td><code>CONFIG_BT_DIS_PNP_VID</code>, <code>CONFIG_BT_DIS_PNP_PID</code></td><td>0x1D50, 0x615E</td><td>Vendor and product ID reported over Bluetooth.</td></tr>
+  <tr><td><code>CONFIG_BT_DIS_MODEL</code>, <code>CONFIG_BT_DIS_MANUF</code></td><td>"BMK Keyboard", "BMK"</td><td>Model and manufacturer reported over Bluetooth.</td></tr>
+  <tr><td><code>CONFIG_BT_CTLR_TX_PWR_PLUS_8</code></td><td>y</td><td>Radio transmit power of +8 dBm.</td></tr>
+</table>
+<p>A change in <code>prj.conf</code> affects every keyboard and the dongle, except where <code>app/src/dongle/dongle.conf</code> overrides it.</p>
+
+<h2>Dongle settings</h2>
+<p>The <a href="dongle.html">USB dongle</a> has its own header, <code>app/src/dongle/dongle.h</code>:</p>
+<table>
+  <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>LOGS</code></td><td><code>false</code></td><td>Enables log messages over a USB serial port.</td></tr>
+  <tr><td><code>CONN_INTERVAL</code></td><td>6</td><td>Bluetooth connection interval, in units of 1.25 ms.</td></tr>
+  <tr><td><code>CONN_TIMEOUT</code></td><td>400</td><td>Supervision timeout, in units of 10 ms.</td></tr>
+  <tr><td><code>SCAN_INTERVAL</code></td><td>0x0060</td><td>Scan interval, in units of 0.625 ms.</td></tr>
+  <tr><td><code>SCAN_GUARD_MS</code></td><td>2000</td><td>Period in ms after which scanning is restarted if no keyboard is connected.</td></tr>
+  <tr><td><code>USB_TX_CACHE_SIZE</code></td><td>16</td><td>Reports that can wait to be sent over USB.</td></tr>
+  <tr><td><code>USB_TX_RETRIES</code></td><td>100</td><td>Attempts to send each report over USB.</td></tr>
+  <tr><td><code>USB_TX_WAIT_MS</code></td><td>20</td><td>Wait in ms between two attempts.</td></tr>
+</table>
+</main>
+</body>
+</html>
