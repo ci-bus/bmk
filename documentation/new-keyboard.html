@@ -89,7 +89,7 @@ const uint16_t pin_power_ext = P1(9);</code></pre>
 </ul>
 
 <h3>One keyboard, two chips</h3>
-<p>If the same PCB is built with both chips and a pin differs, select it at compile time:</p>
+<p>A PCB can usually take a module with either chip. The two chips do not have the same pins: the nRF52833 has no P1.10 to P1.15, so a module pad that is one pin on the nRF52840 can be a different pin on the nRF52833. Where a pad differs, select the pin at compile time:</p>
 <pre><code>#if defined(CONFIG_SOC_NRF52833_QIAA)
 #define COL4_PIN P1(5)
 #else
@@ -103,6 +103,7 @@ const uint16_t pin_power_ext = P1(9);</code></pre>
 <h2>5. Build and test</h2>
 <pre><code>cd app
 west build -p always -b nrf52840 -- -DKEYBOARD=myname/mykeyboard</code></pre>
+<p>Use <code>-b nrf52833</code> instead if the PCB carries an nRF52833 module.</p>
 <p>Flash the result as described in <a href="flashing.html">Flashing</a> and check:</p>
 <ul>
   <li>Every switch sends its key, over USB and over Bluetooth.</li>

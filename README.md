@@ -47,11 +47,11 @@ Flash it: double-tap the reset button and copy `app/build/zephyr/zephyr.uf2` to 
 
 ## Keyboards
 
-| Keyboard | Board |
-|----------|-------|
-| `miguelio/mk60v1` | `nrf52840` |
-| `miguelio/mk60v2` | `nrf52833` |
-| `miguelio/aether75` | `nrf52840` |
+- `miguelio/mk60v1`
+- `miguelio/mk60v2`
+- `miguelio/aether75`
+
+Each PCB accepts an nRF52840 or an nRF52833 module. Build with `-b nrf52840` or `-b nrf52833` to match the module soldered on yours.
 
 ## USB dongle
 

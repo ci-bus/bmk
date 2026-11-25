@@ -16,8 +16,9 @@
 <p>Run the build from the <code>app</code> folder, inside the container:</p>
 <pre><code>cd app
 west build -p auto -b nrf52840 -- -DKEYBOARD=miguelio/mk60v1</code></pre>
-<p>or, for a keyboard with an nRF52833:</p>
+<p>or, for a PCB that carries an nRF52833 module:</p>
 <pre><code>west build -p auto -b nrf52833 -- -DKEYBOARD=miguelio/mk60v2</code></pre>
+<p>The keyboard and the board are independent choices: the same keyboard can be built for either board, and <code>-b</code> must match the module soldered on your PCB.</p>
 <p>The result is <code>build/zephyr/zephyr.uf2</code>, ready to be <a href="flashing.html">flashed</a>.</p>
 
 <h3>What each part means</h3>
