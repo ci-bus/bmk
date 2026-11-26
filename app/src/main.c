@@ -117,6 +117,11 @@ static inline bool is_modifier(uint16_t keycode)
     return keycode >= 0xE0 && keycode <= 0xE7;
 }
 
+static inline bool is_gui(uint16_t keycode)
+{
+    return keycode == HID_KEY_LGUI || keycode == HID_KEY_RGUI;
+}
+
 static inline uint8_t modifier_bit(uint16_t keycode)
 {
     return 1 << (((uint8_t)(keycode & 0xFF)) - 0xE0);
@@ -1193,7 +1198,10 @@ static void held_mod_keys_to_report(void)
         if (idx != 0)
         {
             uint16_t keycode = (uint16_t)(keys[idx].kc[layer] >> 8);
-            report[1] |= modifier_bit(keycode);
+            if (!(gaming_mode && is_gui(keycode)))
+            {
+                report[1] |= modifier_bit(keycode);
+            }
             held_mod_keys[i] = (held_mod_key_t){0};
             keys[idx].held = true;
         }
@@ -1241,9 +1249,9 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
     case K_KEYBOARD:
         if (is_modifier(keycode))
         {
-            if (gaming_mode && (HID_KEY_LGUI || HID_KEY_RGUI))
+            if (gaming_mode && is_gui(keycode))
             {
-                return -1;
+                return 0;
             }
             idx = 1;
             report[idx] |= modifier_bit(keycode);
