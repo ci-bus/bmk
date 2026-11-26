@@ -25,7 +25,9 @@
 <table>
   <tr><th></th><th>Normal</th><th>Gaming mode</th></tr>
   <tr><td>Pause between matrix scans</td><td><code>CYCLE_DELAY</code> (1000 µs by default)</td><td><code>GAMING_CYCLE_DELAY</code> (100 µs by default)</td></tr>
+  <tr><td>GUI keys (Windows key)</td><td>Work normally</td><td>Ignored, so they cannot take you out of a full-screen game</td></tr>
 </table>
+<p>Both GUI keys are ignored, also when they are the hold action of a <a href="tap-hold.html">tap-hold</a> key. The other modifiers keep working.</p>
 <p>The debounce and tap-hold times are recalculated for the new scan rate, so they keep the same duration in milliseconds.</p>
 
 <div class="warn">
