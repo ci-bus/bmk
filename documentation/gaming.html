@@ -10,7 +10,7 @@
 <body>
 <main>
 <h1>Gaming mode</h1>
-<p class="lead">Gaming mode scans the matrix much more often, trading battery life for a lower delay between pressing a key and sending it.</p>
+<p class="lead">Gaming mode scans the matrix much more often and sends each key press without waiting for the debounce, trading battery life for a lower delay between pressing a key and sending it.</p>
 
 <h2>Switching it on and off</h2>
 <p>Put these two keycodes somewhere in your keymap, usually on a secondary layer:</p>
@@ -25,10 +25,13 @@
 <table>
   <tr><th></th><th>Normal</th><th>Gaming mode</th></tr>
   <tr><td>Pause between matrix scans</td><td><code>CYCLE_DELAY</code> (1000 µs by default)</td><td><code>GAMING_CYCLE_DELAY</code> (100 µs by default)</td></tr>
+  <tr><td>Debounce of a key press</td><td><code>DEBOUNCE_PRESS</code> (5 ms by default)</td><td><code>GAMING_DEBOUNCE_PRESS</code> (0 ms by default): the press is sent on the first reading</td></tr>
+  <tr><td>Debounce of a key release</td><td><code>DEBOUNCE_RELEASE</code> (15 ms by default)</td><td><code>GAMING_DEBOUNCE_RELEASE</code> (10 ms by default)</td></tr>
   <tr><td>GUI keys (Windows key)</td><td>Work normally</td><td>Ignored, so they cannot take you out of a full-screen game</td></tr>
 </table>
 <p>Both GUI keys are ignored, also when they are the hold action of a <a href="tap-hold.html">tap-hold</a> key. The other modifiers keep working.</p>
-<p>The debounce and tap-hold times are recalculated for the new scan rate, so they keep the same duration in milliseconds.</p>
+<p>The tap-hold times are recalculated for the new scan rate, so they keep the same duration in milliseconds.</p>
+<p>With a press debounce of 0, contact bounce is still filtered by the release debounce: once a press is sent, the key is not released until it has read as released for <code>GAMING_DEBOUNCE_RELEASE</code>. If a keyboard produces unwanted or repeated key presses in gaming mode, raise <code>GAMING_DEBOUNCE_PRESS</code> to 1 or more, or raise <code>GAMING_DEBOUNCE_RELEASE</code>.</p>
 
 <div class="warn">
   <p>With the default values the pause between scans is ten times shorter, so the processor rests less and the battery drains faster. Switch gaming mode off when you finish playing.</p>
@@ -40,7 +43,10 @@
   <tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>CYCLE_DELAY</code></td><td>1000</td><td>Pause in µs between two matrix scans in normal mode.</td></tr>
   <tr><td><code>GAMING_CYCLE_DELAY</code></td><td>100</td><td>Pause in µs between two matrix scans in gaming mode.</td></tr>
+  <tr><td><code>GAMING_DEBOUNCE_PRESS</code></td><td>0</td><td>Time in ms a key must read as pressed before the press is sent in gaming mode.</td></tr>
+  <tr><td><code>GAMING_DEBOUNCE_RELEASE</code></td><td>10</td><td>Time in ms a key must read as released before the release is sent in gaming mode.</td></tr>
 </table>
+<p>With the default <code>GAMING_CYCLE_DELAY</code>, keep both gaming debounce times at 25 ms or less: the debounce counter of a key holds up to 255 scan cycles.</p>
 </main>
 </body>
 </html>

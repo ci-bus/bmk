@@ -29,7 +29,7 @@
         { file: 'power.html', title: 'Sleep and power', keys: 'sleep deep sleep timeout power_ext hid_deep_sleep consumption' },
         { file: 'rgb.html', title: 'RGB lighting', keys: 'ws2812 leds rgb_port rgb_pin rgb_leds rgb_effects rgb_effect_on_startup effect rainbow saturation hid_key_rgb' },
         { file: 'battery.html', title: 'Battery', keys: 'battery level percentage bat_update vddh' },
-        { file: 'gaming.html', title: 'Gaming mode', keys: 'hid_gaming_on hid_gaming_off scan rate gaming_cycle_delay' },
+        { file: 'gaming.html', title: 'Gaming mode', keys: 'hid_gaming_on hid_gaming_off scan rate gaming_cycle_delay gaming_debounce_press windows gui' },
         { file: 'dongle.html', title: 'USB dongle', keys: 'dongle central wireless receiver free mark' },
       ],
     },

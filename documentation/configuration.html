@@ -34,7 +34,9 @@
   <tr><td><code>CYCLE_DELAY</code></td><td>1000</td><td>µs</td><td>Pause between two scans of the matrix.</td></tr>
   <tr><td><code>GAMING_CYCLE_DELAY</code></td><td>100</td><td>µs</td><td>Pause between two scans in <a href="gaming.html">gaming mode</a>.</td></tr>
   <tr><td><code>DEBOUNCE_PRESS</code></td><td>5</td><td>ms</td><td>Time a key must read as pressed before the press is sent.</td></tr>
+  <tr><td><code>GAMING_DEBOUNCE_PRESS</code></td><td>0</td><td>ms</td><td>Same as <code>DEBOUNCE_PRESS</code>, used in <a href="gaming.html">gaming mode</a>.</td></tr>
   <tr><td><code>DEBOUNCE_RELEASE</code></td><td>15</td><td>ms</td><td>Time a key must read as released before the release is sent.</td></tr>
+  <tr><td><code>GAMING_DEBOUNCE_RELEASE</code></td><td>10</td><td>ms</td><td>Same as <code>DEBOUNCE_RELEASE</code>, used in <a href="gaming.html">gaming mode</a>.</td></tr>
   <tr><td><code>DEBOUNCE_ENCODER</code></td><td>5</td><td>ms</td><td>Time the encoder must rest before a step is sent.</td></tr>
 </table>
 <p>Debounce times are counted in scan cycles, so the real time is slightly longer than the configured value. If a switch produces double characters, raise <code>DEBOUNCE_PRESS</code> and <code>DEBOUNCE_RELEASE</code>.</p>
