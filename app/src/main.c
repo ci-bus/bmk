@@ -127,10 +127,10 @@ static inline uint8_t modifier_bit(uint16_t keycode)
     return 1 << (((uint8_t)(keycode & 0xFF)) - 0xE0);
 }
 
-static void debounce_init(int delay)
+static void debounce_init(int delay, int press, int release)
 {
-    debounce_p = DEBOUNCE_PRESS * CYCLE_BASE_DELAY / delay;
-    debounce_r = DEBOUNCE_RELEASE * CYCLE_BASE_DELAY / delay;
+    debounce_p = press * CYCLE_BASE_DELAY / delay;
+    debounce_r = release * CYCLE_BASE_DELAY / delay;
     debounce_e = DEBOUNCE_ENCODER * CYCLE_BASE_DELAY / delay;
     tap_hold_p = TAP_HOLD_PRESS_DELAY * CYCLE_BASE_DELAY / delay;
     tap_hold_r = TAP_HOLD_RELEASE_DELAY * CYCLE_BASE_DELAY / delay;
@@ -1442,13 +1442,13 @@ static int press_key(uint16_t keycode, bool tap_hold_key)
             release_all();
             gaming_mode = true;
             dynamic_cycle_delay = GAMING_CYCLE_DELAY;
-            debounce_init(dynamic_cycle_delay);
+            debounce_init(dynamic_cycle_delay, GAMING_DEBOUNCE_PRESS, GAMING_DEBOUNCE_RELEASE);
             break;
         case HID_GAMING_OFF:
             release_all();
             gaming_mode = false;
             dynamic_cycle_delay = CYCLE_DELAY;
-            debounce_init(dynamic_cycle_delay);
+            debounce_init(dynamic_cycle_delay, DEBOUNCE_PRESS, DEBOUNCE_RELEASE);
             break;
         }
         break;
@@ -2046,7 +2046,7 @@ int main(void)
 
     init_mac_identity(false);
 
-    debounce_init(dynamic_cycle_delay);
+    debounce_init(dynamic_cycle_delay, DEBOUNCE_PRESS, DEBOUNCE_RELEASE);
     reports_init();
     keymap_init();
 
