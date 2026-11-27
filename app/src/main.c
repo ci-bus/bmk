@@ -2079,7 +2079,7 @@ int main(void)
     while (1)
     {
         int32_t uptime = k_uptime_get_32();
-        if (((ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_ADV_MS) || (!ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_MS)) && !some_pressed_key()
+        if ((!gaming_mode || deep_sleep) && ((ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_ADV_MS) || (!ble_advertising && (uptime - last_activity) > SLEEP_TIMEOUT_MS)) && !some_pressed_key()
 #if USB
             && !usb_connected
 #endif
